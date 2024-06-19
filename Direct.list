@@ -3,4 +3,7 @@ DOMAIN-SUFFIX,oray.com
 DOMAIN-SUFFIX,oray.net
 DOMAIN-KEYWORD,oray
 
+# wechat规则
 IP-CIDR,43.160.144.21/32,no-resolve
+IP-CIDR,43.135.106.208/32,no-resolve
+
