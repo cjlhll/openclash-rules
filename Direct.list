@@ -4,7 +4,7 @@ DOMAIN-SUFFIX,oray.net
 DOMAIN-KEYWORD,oray
 
 # wechat规则
-IP-CIDR,43.0.0.0/16,DIRECT
+IP-CIDR,43.0.0.0/8,DIRECT
 
 #  dns 直连
 DOMAIN-SUFFIX,dns.jd.com
