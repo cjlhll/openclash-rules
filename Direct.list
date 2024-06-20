@@ -4,16 +4,9 @@ DOMAIN-SUFFIX,oray.net
 DOMAIN-KEYWORD,oray
 
 # wechat规则
-#IP-CIDR,43.160.144.21/32,no-resolve
-#IP-CIDR,43.135.106.208/32,no-resolve
-#IP-CIDR,43.160.144.21/32,DIRECT
-#IP-CIDR,43.135.106.208/32,DIRECT
+IP-CIDR,43.0.0.0/16,DIRECT
 
-#IP-CIDR,43.0.0.0/16,DIRECT
-#IP-CIDR,101.33.0.0/16,DIRECT
-
-
-#  abcdefg
+#  dns 直连
 DOMAIN-SUFFIX,dns.jd.com
 DOMAIN-SUFFIX,dns.weibo.cn
 DOMAIN-SUFFIX,dns.weixin.qq.com
