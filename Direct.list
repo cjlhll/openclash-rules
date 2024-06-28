@@ -4,7 +4,7 @@ DOMAIN-SUFFIX,oray.net
 DOMAIN-KEYWORD,oray
 
 #进程规则
-PROCESS-NAME,WeChat
+PROCESS-NAME,WeChat.exe
 
 DOMAIN-SUFFIX,dns.jd.com
 DOMAIN-SUFFIX,dns.weibo.cn
