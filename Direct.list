@@ -2,6 +2,7 @@ DOMAIN-SUFFIX,axshare.com
 DOMAIN-SUFFIX,oray.com
 DOMAIN-SUFFIX,oray.net
 DOMAIN-KEYWORD,oray
+DOMAIN-SUFFIX,bilibili.com
 
 #进程规则
 PROCESS-NAME,WeChat.exe
