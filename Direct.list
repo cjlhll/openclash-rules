@@ -26,10 +26,3 @@ DOMAIN-SUFFIX,httpsdns.baidu.com
 DOMAIN-SUFFIX,kuaishou.httpdns.pro
 DOMAIN-SUFFIX,lofter.httpdns.c.163.com
 DOMAIN-SUFFIX,music.httpdns.c.163.com
-
-IP-CIDR,43.130.192.0/19,no-resolve
-IP-CIDR,43.152.0.0/13,no-resolve
-IP-CIDR,129.226.0.0/16,no-resolve
-IP-CIDR,101.32.0.0/16,no-resolve
-IP-CIDR,203.205.220.0/23,no-resolve
-IP-CIDR,162.62.0.0/16,no-resolve
