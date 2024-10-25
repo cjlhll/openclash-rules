@@ -6,7 +6,7 @@ DOMAIN-SUFFIX,5lm7l.vip-88.top
 DOMAIN-SUFFIX,speedtest.net
 
 #进程规则
-PROCESS-NAME,WeChat.exe
+#PROCESS-NAME,WeChat.exe
 
 DOMAIN-SUFFIX,dns.jd.com
 DOMAIN-SUFFIX,dns.weibo.cn
