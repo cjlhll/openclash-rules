@@ -1,3 +1,2 @@
-DOMAIN-SUFFIX,account.jetbrains.com
-
-
+payload:
+  - '+.account.jetbrains.com'
