@@ -15,7 +15,7 @@ ruleset=🛑 全球拦截,clash-domain:https://cdn.jsdelivr.net/gh/Loyalsoldier/
 ruleset=🚀 节点选择,clash-domain:https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/tld-not-cn.txt
 ruleset=🚀 节点选择,clash-domain:https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/gfw.txt
 ruleset=🚀 节点选择,clash-ipcidr:https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/telegramcidr.txt
-ruleset=🐟 漏网之鱼,[]FINAL
+ruleset=DIRECT,[]FINAL
 ;设置规则标志位
 
 ;设置分组标志位
@@ -23,7 +23,6 @@ custom_proxy_group=🚀 节点选择`select`[]♻️ 自动选择`[]DIRECT`.*
 custom_proxy_group=♻️ 自动选择`url-test`.*`http://www.gstatic.com/generate_204`300,,50
 custom_proxy_group=🎯 全球直连`select`[]DIRECT`[]🚀 节点选择`[]♻️ 自动选择
 custom_proxy_group=🛑 全球拦截`select`[]REJECT`[]DIRECT
-custom_proxy_group=🐟 漏网之鱼`[]🎯 全球直连`[]♻️ 自动选择`.*
 ;设置分组标志位
 
 enable_rule_generator=true
