@@ -24,6 +24,7 @@ ruleset=🎥 Netflix,clash-ipcidr:https://raw.githubusercontent.com/blackmatrix7
 ;ruleset=🚀 节点选择,clash-domain:https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt
 ruleset=🚀 节点选择,clash-domain:https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/tld-not-cn.txt
 ruleset=🚀 节点选择,clash-domain:https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/gfw.txt
+ruleset=🚀 节点选择,clash-domain:https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt
 ruleset=🚀 节点选择,clash-ipcidr:https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/telegramcidr.txt
 ;ruleset=🎯 全球直连,[]GEOIP,LAN
 ruleset=🎯 全球直连,[]GEOIP,CN
