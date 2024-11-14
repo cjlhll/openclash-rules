@@ -4,6 +4,11 @@ payload:
   - DOMAIN-SUFFIX,oray.net
   - DOMAIN-KEYWORD,oray
   - DOMAIN-SUFFIX,speedtest.net
+  - DOMAIN-SUFFIX,cfkj86.com
+  - DOMAIN-SUFFIX,xb6v.com
+  - DOMAIN-SUFFIX,dmmiku.com
+  - DOMAIN-SUFFIX,duanjutt.tv
+  - DOMAIN-SUFFIX,dmbus.cc
   
   #进程规则
   - PROCESS-NAME,WeChat.exe
