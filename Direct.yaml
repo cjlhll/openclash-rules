@@ -4,6 +4,7 @@ payload:
   - DOMAIN-SUFFIX,oray.net
   - DOMAIN-KEYWORD,oray
   - DOMAIN-SUFFIX,speedtest.net
+  #tvbox的一些源
   - DOMAIN-SUFFIX,cfkj86.com
   - DOMAIN-SUFFIX,xb6v.com
   - DOMAIN-SUFFIX,dmmiku.com
