@@ -11,6 +11,7 @@ payload:
   - DOMAIN-SUFFIX,dmbus.cc
   - IP-CIDR,45.194.58.5/32
   - IP-CIDR,203.210.16.115/32
+  - IP-CIDR,43.156.0.0/16
   
   #进程规则
   - PROCESS-NAME,WeChat.exe
