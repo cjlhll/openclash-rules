@@ -1,9 +1,5 @@
 [custom]
 
-; 添加 DOMAIN 规则
-rules:
-  - PROCESS-NAME,WeChat.exe,🎯 全球直连
-
 ;设置规则标志位
 ruleset=🛑 全球拦截,clash-domain:https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/Reject.yaml
 ruleset=🎯 全球直连,clash-classic:https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/Direct.yaml
