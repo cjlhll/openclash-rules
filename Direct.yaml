@@ -14,9 +14,6 @@ payload:
   - IP-CIDR,43.156.0.0/16
   - IP-CIDR,101.32.118.0/23
   
-  #进程规则
-  - PROCESS-NAME,WeChat.exe
-  
   - DOMAIN-SUFFIX,dns.jd.com
   - DOMAIN-SUFFIX,dns.weibo.cn
   - DOMAIN-SUFFIX,dns.weixin.qq.com
