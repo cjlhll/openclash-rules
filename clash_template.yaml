@@ -122,7 +122,8 @@ proxy-providers:
     interval: 21600
 # 节点名称前缀 p1
     override:
-      additional-prefix: "p1 |"
+      additional-prefix: "红杏 |"
+      filter: "香港|日本|新加坡|美国" # 添加筛选规则
       
   2.provider2:
     <<: *p
@@ -131,7 +132,8 @@ proxy-providers:
     url: https://sub.xfltd.bond/api/v1/client/subscribe?token=3b98f3b790be8b58471c033fa24b9ba0
     interval: 21600
     override:
-      additional-prefix: "p2 |"
+      additional-prefix: "XFSS |"
+      filter: "香港|日本|新加坡|美国" # 添加筛选规则
 
 proxy-groups:
   - {name: 🎯Mode, type: select, proxies: [🚀Manual, ♨️AutoSelect, ♻️ SELECT1,♻️ SELECT2,♻️ SELECT3,🍃DirectMode]}
