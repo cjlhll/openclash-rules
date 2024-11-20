@@ -117,23 +117,23 @@ proxy-providers:
 # 节点文件 p1对应provider1
     path: ./proxy_provider/p1.yaml
 # 订阅 链接
-    url: https://hongxingdl.love/hxvip?token=eefd5d29f9375c9010dc770128c72043?include=香港|日本
+    url: https://hongxingdl.love/hxvip?token=eefd5d29f9375c9010dc770128c72043
 # 自动更新时间 21600(秒) / 3600 = 6小时
     interval: 21600
+    filter: "香港|日本|新加坡|美国" # 添加筛选规则
 # 节点名称前缀 p1
     override:
       additional-prefix: "红杏 |"
-      filter: "香港|日本|新加坡|美国" # 添加筛选规则
       
   2.provider2:
     <<: *p
     type: http
     path: ./proxy_provider/p2.yaml
-    url: https://sub.xfltd.bond/api/v1/client/subscribe?token=3b98f3b790be8b58471c033fa24b9ba0?include=香港|日本
+    url: https://sub.xfltd.bond/api/v1/client/subscribe?token=3b98f3b790be8b58471c033fa24b9ba0
     interval: 21600
+    filter: "香港|日本|新加坡|美国" # 添加筛选规则
     override:
       additional-prefix: "XFSS |"
-      filter: "香港|日本|新加坡|美国" # 添加筛选规则
 
 proxy-groups:
   - {name: 🎯Mode, type: select, proxies: [🚀Manual, ♨️AutoSelect, ♻️ SELECT1,♻️ SELECT2,♻️ SELECT3,🍃DirectMode]}
