@@ -9,7 +9,7 @@ geodata-mode: true
 geodata-loader: standard
 unified-delay: true
 log-level: info
-ipv6: true
+ipv6: false
 external-controller: 0.0.0.0:9090
 tcp-concurrent: true
 enable-process: true
@@ -59,7 +59,7 @@ dns:
   prefer-h3: true
   use-system-hosts: true
   listen: 0.0.0.0:5053
-  ipv6: true
+  ipv6: false
   respect-rules: true
   enhanced-mode: fake-ip
   fake-ip-filter-mode: blacklist
