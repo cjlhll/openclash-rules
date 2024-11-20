@@ -111,7 +111,7 @@ dns:
     - 2.provider2
 
 proxy-providers:
-  1.provider1:
+  1.红杏:
     <<: *p  
     type: http
 # 节点文件 p1对应provider1
@@ -124,9 +124,9 @@ proxy-providers:
     exclude-filter: "IPV6"
 # 节点名称前缀 p1
     override:
-      additional-prefix: "红杏 |"
+      additional-prefix: "红杏 | "
       
-  2.provider2:
+  2.XFSS:
     <<: *p
     type: http
     path: ./proxy_provider/p2.yaml
@@ -135,7 +135,17 @@ proxy-providers:
     filter: "香港|日本|新加坡|美国" # 添加筛选规则
     exclude-filter: "IPV6"
     override:
-      additional-prefix: "XFSS |"
+      additional-prefix: "XFSS | "
+  3.BIUBIU:
+    <<: *p
+    type: http
+    path: ./proxy_provider/p2.yaml
+    url: http://13.215.48.59/api/v1/client/subscribe?token=983d0c7636846136b1339c5c71b9d250
+    interval: 21600
+    filter: "香港|日本|新加坡|美国" # 添加筛选规则
+    exclude-filter: "IPV6"
+    override:
+      additional-prefix: "BIUBIU | "
 
 proxy-groups:
   - {name: 🚀 节点选择, type: select, proxies: [♻️ 自动选择], <<: *u}
