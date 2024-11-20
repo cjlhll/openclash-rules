@@ -16,8 +16,8 @@ ruleset=🎯 全球直连,clash-domain:https://cdn.jsdelivr.net/gh/Loyalsoldier/
 ruleset=🎯 全球直连,clash-ipcidr:https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/lancidr.txt,no-resolve
 ruleset=🎯 全球直连,clash-ipcidr:https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/cncidr.txt,no-resolve
 ruleset=🚀 节点选择,clash-ipcidr:https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/telegramcidr.txt,no-resolve
-ruleset=🎯 全球直连,[]GEOIP,LAN
-ruleset=🎯 全球直连,[]GEOIP,CN
+ruleset=🎯 全球直连,[]GEOIP,LAN,no-resolve
+ruleset=🎯 全球直连,[]GEOIP,CN,no-resolve
 ruleset=🎯 全球直连,[]GEOSITE,CN
 ruleset=🐟 漏网之鱼,[]FINAL
 ;设置规则标志位
