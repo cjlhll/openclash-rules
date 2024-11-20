@@ -121,6 +121,7 @@ proxy-providers:
 # 自动更新时间 21600(秒) / 3600 = 6小时
     interval: 21600
     filter: "香港|日本|新加坡|美国" # 添加筛选规则
+    exclude-filter: "IPV6"
 # 节点名称前缀 p1
     override:
       additional-prefix: "红杏 |"
@@ -132,6 +133,7 @@ proxy-providers:
     url: https://sub.xfltd.bond/api/v1/client/subscribe?token=3b98f3b790be8b58471c033fa24b9ba0
     interval: 21600
     filter: "香港|日本|新加坡|美国" # 添加筛选规则
+    exclude-filter: "IPV6"
     override:
       additional-prefix: "XFSS |"
 
