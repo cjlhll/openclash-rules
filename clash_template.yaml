@@ -107,8 +107,9 @@ dns:
 #	订阅组合
   u: &u
     use:
-    - 1.provider1
-    - 2.provider2
+    - 1.红杏
+    - 2.XFSS
+    - 3.BIUBIU
 
 proxy-providers:
   1.红杏:
@@ -139,7 +140,7 @@ proxy-providers:
   3.BIUBIU:
     <<: *p
     type: http
-    path: ./proxy_provider/p2.yaml
+    path: ./proxy_provider/p3.yaml
     url: http://13.215.48.59/api/v1/client/subscribe?token=983d0c7636846136b1339c5c71b9d250
     interval: 21600
     filter: "香港|日本|新加坡|美国" # 添加筛选规则
