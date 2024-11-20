@@ -138,94 +138,120 @@ proxy-providers:
       additional-prefix: "XFSS |"
 
 proxy-groups:
-  - {name: 🎯Mode, type: select, proxies: [🚀Manual, ♨️AutoSelect, ♻️ SELECT1,♻️ SELECT2,♻️ SELECT3,🍃DirectMode]}
-  - {name: 🚀Manual, type: select, proxies: [], <<: *u}
-  - {name: ♻️ SELECT1, type: select, proxies: [🚀Manual], <<: *u}
-  - {name: ♻️ SELECT2, type: select, proxies: [🚀Manual], <<: *u}
-  - {name: ♻️ SELECT3, type: select, proxies: [🚀Manual,🍃DirectMode], <<: *u}
-  - {name: 🎮️Steam,type: select, proxies: [🎯Mode,♻️ SELECT1,♻️ SELECT2,♻️ SELECT3]}
-  - {name: 💎Emby,type: select, filter: "Emby", proxies: [♻️ SELECT1,♻️ SELECT2,♻️ SELECT3], <<: *u}
-  - {name: 🪁Microsoft, type: select, proxies: [🎯Mode, ♻️ SELECT1,♻️ SELECT2,♻️ SELECT3,🍃DirectMode,♨️AutoSelect]}
-  - {name: 💬Telegram, type: select, proxies: [🎯Mode, ♻️ SELECT1,♻️ SELECT2,♻️ SELECT3,♨️AutoSelect]}
-  - {name: 🧭Google, type: select, proxies: [🎯Mode, ♻️ SELECT1,♻️ SELECT2,♻️ SELECT3]}
-  - {name: 🎏Final, type: select, proxies: [🎯Mode]}
-  - {name: 🍃DirectMode, type: select, proxies: [DIRECT]}
-  # 自动选择案例
-  - {name: ♨️AutoSelect, type: url-test, interval: 180, url: 'https://cp.cloudflare.com/generate_204', proxies: [], <<: *u}
-
-rule-providers:
-# 规则组合
-  Telegram:
-    type: http
-    behavior: classical
-    format: yaml
-    path: ./rule/Telegram.yaml
-    url: "https://blog.tyasaka.xyz/beta/Telegram.yaml"
-    interval: 43200
-  Google:
-    type: http
-    behavior: classical
-    format: yaml
-    path: ./rule/Google.yaml
-    url: "https://blog.tyasaka.xyz/beta/Google.yaml"
-    interval: 43200
-  Steam:
-    type: http
-    format: yaml
-    behavior: classical
-    url: "https://blog.tyasaka.xyz/beta/steam.yaml"
-    path: ./rule/steam.yaml
-    interval: 43200
-  SteamCN: 
-    type: http
-    behavior: classical
-    format: yaml
-    url: "https://blog.tyasaka.xyz/beta/steamcn.yaml"
-    path: ./rule/steamcn.yaml
-    interval: 43200
-  Microsoft:
-    type: http
-    behavior: classical
-    format: yaml
-    path: ./rule/Microsoft.yaml
-    url: "https://blog.tyasaka.xyz/beta/Microsoft.yaml"
-    interval: 43200
-  RE:
-    type: http
-    behavior: classical
-    format: yaml
-    url: "https://blog.tyasaka.xyz/beta/re.yaml"
-    path: ./rule/re.yaml
-    interval: 43200
-  Emby:
-    type: http
-    behavior: classical
-    format: yaml
-    url: "https://blog.tyasaka.xyz/beta/emby.yaml"
-    path: ./rule/emby.yaml
-    interval: 43200
-  FCM:
-    type: http
-    behavior: classical
-    format: yaml
-    url: "https://blog.tyasaka.xyz/beta/fcm.yaml"
-    path: ./rule/fcm.yaml
-    interval: 43200
+  - {name: 🚀 节点选择, type: select, proxies: [♻️ 自动选择], <<: *u}
+   # 自动选择案例
+  - {name: ♻️ 自动选择, type: url-test, interval: 180, url: 'https://cp.cloudflare.com/generate_204', proxies: [], <<: *u}
+  - {name: 🎥 Netflix, type: select, proxies: [🚀 节点选择,♻️ 自动选择], <<: *u}
+  - {name: 🤖 ChatGPT, type: select, proxies: [🚀 节点选择,♻️ 自动选择], <<: *u}
+  - {name: 🎯 全球直连, type: select, proxies: [DIRECT,🚀 节点选择,♻️ 自动选择]}
+  - {name: 🛑 全球拦截, type: select, proxies: [REJECT,DIRECT]}
+  - {name: 🐟 漏网之鱼, type: select, proxies: [🚀 节点选择,🎯 全球直连,♻️ 自动选择], <<: *u}
 
 rules:
-# 解决Telegram持续转圈问题，可能引发闪退
-  - IP-CIDR,95.161.76.100/31,REJECT
-# - Rule Group 应用规则，从上往下匹配
-  - RULE-SET,SteamCN,🍃DirectMode
-  - RULE-SET,Google,🧭Google
-  - RULE-SET,Microsoft,🪁Microsoft
-  - RULE-SET,Telegram,💬Telegram
-  - RULE-SET,Steam,🎮️Steam
-  - RULE-SET,Emby,💎Emby 
-  - RULE-SET,FCM,🍃DirectMode
-  - RULE-SET,RE,REJECT
-  # GEO Rule
-  - GEOSITE,CN,🍃DirectMode
-  - GEOIP,CN,🍃DirectMode
-  - MATCH,🎏Final
+  - RULE-SET,Reject,🛑 全球拦截
+  - RULE-SET,Direct,🎯 全球直连
+  - RULE-SET,private,🎯 全球直连
+  - RULE-SET,icloud,🎯 全球直连
+  - RULE-SET,apple,🎯 全球直连
+  - RULE-SET,google,🚀 节点选择
+  - RULE-SET,OpenAI,🤖 ChatGPT
+  - RULE-SET,SteamCN,🎯 全球直连
+  - RULE-SET,Netflix,🎥 Netflix
+  - RULE-SET,Netflix_IP,🎥 Netflix
+  - RULE-SET,proxy,🚀 节点选择
+  - RULE-SET,direct,🎯 全球直连
+  - RULE-SET,lancidr,🎯 全球直连
+  - RULE-SET,cncidr,🎯 全球直连
+  - RULE-SET,telegramcidr,🚀 节点选择
+  - GEOIP,LAN,🎯 全球直连,no-resolve
+  - GEOIP,CN,🎯 全球直连,no-resolve
+  - GEOSITE,CN,🎯 全球直连
+  - MATCH,🐟 漏网之鱼
+rule-providers:
+  Reject:
+    type: http
+    behavior: domain
+    url: https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/Reject.yaml
+    path: ./providers/rule-provider_Reject.yaml
+    interval: 86400
+  Direct:
+    type: http
+    behavior: classical
+    url: https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/Direct.yaml
+    path: ./providers/rule-provider_Direct.yaml
+    interval: 86400
+  private:
+    type: http
+    behavior: domain
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/private.txt
+    path: ./providers/rule-provider_private.yaml
+    interval: 86400
+  icloud:
+    type: http
+    behavior: domain
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/icloud.txt
+    path: ./providers/rule-provider_icloud.yaml
+    interval: 86400
+  apple:
+    type: http
+    behavior: domain
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/apple.txt
+    path: ./providers/rule-provider_apple.yaml
+    interval: 86400
+  google:
+    type: http
+    behavior: domain
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/google.txt
+    path: ./providers/rule-provider_google.yaml
+    interval: 86400
+  OpenAI:
+    type: http
+    behavior: classical
+    url: https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI.yaml
+    path: ./providers/rule-provider_OpenAI.yaml
+    interval: 86400
+  SteamCN:
+    type: http
+    behavior: classical
+    url: https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SteamCN/SteamCN.yaml
+    path: ./providers/rule-provider_SteamCN.yaml
+    interval: 86400
+  Netflix:
+    type: http
+    behavior: classical
+    url: https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix.yaml
+    path: ./providers/rule-provider_Netflix.yaml
+    interval: 86400
+  Netflix_IP:
+    type: http
+    behavior: ipcidr
+    url: https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix_IP.yaml
+    path: ./providers/rule-provider_Netflix_IP.yaml
+  proxy:
+    type: http
+    behavior: domain
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/proxy.txt
+    path: ./providers/rule-provider_proxy.yaml
+    interval: 86400
+  direct:
+    type: http
+    behavior: domain
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/direct.txt
+    path: ./providers/rule-provider_direct.yaml
+    interval: 86400
+  lancidr:
+    type: http
+    behavior: ipcidr
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/lancidr.txt
+    path: ./providers/rule-provider_lancidr.yaml
+  cncidr:
+    type: http
+    behavior: ipcidr
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/cncidr.txt
+    path: ./providers/rule-provider_cncidr.yaml
+  telegramcidr:
+    type: http
+    behavior: ipcidr
+    url: https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/telegramcidr.txt
+    path: ./providers/rule-provider_telegramcidr.yaml
   
