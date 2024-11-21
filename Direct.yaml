@@ -1,4 +1,5 @@
 payload:
+  - PROCESS-NAME,Wechat.exe
   - DOMAIN-SUFFIX,axshare.com
   - DOMAIN-SUFFIX,oray.com
   - DOMAIN-SUFFIX,oray.net
