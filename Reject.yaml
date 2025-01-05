@@ -1,4 +1,4 @@
 payload:
-  - '+.firebaselogging-pa.googleapis.com'
-  - '142.0.0.0/8'
+  - DOMAIN-SUFFIX,firebaselogging-pa.googleapis.com
+  - IP-CIDR,142.0.0.0/8
 
