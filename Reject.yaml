@@ -1,2 +1,5 @@
 payload:
   - '+.account.jetbrains.com'
+  - '+.firebaselogging-pa.googleapis.com'
+
+
