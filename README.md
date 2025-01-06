@@ -1,4 +1,4 @@
-###安装mihomo脚本
+### 安装mihomo脚本
 ```shell
 curl -s -L https://gh-proxy.com/raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/mihomoInstall.sh | ash
 ```
