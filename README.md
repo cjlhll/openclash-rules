@@ -1,3 +1,8 @@
+###安装mihomo脚本
+```shell
+curl -s -L https://gh-proxy.com/raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/mihomoInstall.sh | ash
+```
+
 # 补充版clash规则
 本规则基于  
 ACL4SSR_Online_Full 全分组重度用户使用(与Github同步)[传送门](https://github.com/ACL4SSR/ACL4SSR/blob/master/Clash/config/ACL4SSR_Online_Full.ini)  
