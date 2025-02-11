@@ -1,0 +1,45 @@
+name: 同步 OpenWrt-mihomo test
+
+on:
+  repository_dispatch:
+    types: [release]
+  workflow_dispatch:
+
+jobs:
+  sync-assets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出当前仓库代码
+        uses: actions/checkout@v2
+
+      - name: 获取目标仓库的最新发布标签
+        id: get_latest_tag
+        run: |
+          release_info=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest)
+          latest_tag=$(echo "$release_info" | jq -r '.tag_name')
+          echo "最新发布标签是：$latest_tag"
+          echo "LATEST_TAG=$latest_tag" >> $GITHUB_ENV
+
+      - name: 获取最新发布的资产
+        run: |
+          assets=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest | jq -r '.assets[].browser_download_url')
+          for asset in $assets; do
+            filename=$(basename $asset)
+            curl -s -L $asset -o $filename
+          done
+
+      - name: 获取远程分支信息
+        run: git fetch
+
+      - name: 切换到 release 分支
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git checkout -f release || git checkout -b release origin/release
+
+      - name: 添加/更新文件并推送
+        run: |
+          git add -A  # 添加/更新所有文件
+          git commit -m "同步 OpenWrt-mihomo 发布版本：${{ env.LATEST_TAG }}" || echo "没有文件变更，跳过提交"
+          git push origin release

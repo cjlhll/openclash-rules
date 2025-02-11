@@ -1,0 +1,53 @@
+name: 同步 OpenWrt-mihomo
+
+on:
+  repository_dispatch:
+    types: [release]
+  workflow_dispatch:
+
+jobs:
+  sync-assets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出当前仓库代码
+        uses: actions/checkout@v2
+
+      - name: 获取目标仓库的最新发布标签
+        id: get_latest_tag
+        run: |
+          # 获取目标仓库的最新发布信息
+          release_info=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest)
+          # 提取标签名称
+          latest_tag=$(echo "$release_info" | jq -r '.tag_name')
+          echo "最新发布标签是：$latest_tag"
+          echo "LATEST_TAG=$latest_tag" >> $GITHUB_ENV
+
+      - name: 获取最新发布的资产
+        run: |
+          # 获取最新发布的资产列表
+          assets=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest | jq -r '.assets[].browser_download_url')
+          # 下载每个资产
+          for asset in $assets; do
+            filename=$(basename $asset)
+            curl -s -L $asset -o $filename
+          done
+
+      - name: 获取远程分支信息
+        run: git fetch
+
+      - name: 清空 release 分支中的所有文件（排除 .md 文件）
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git checkout -f release || git checkout -b release origin/release
+          # 删除所有文件，但保留 .md 文件
+          find . -type f ! -name "*.md" -exec git rm --cached {} \;
+          git commit -m "清空 release 分支中的所有文件（保留 .md 文件）"
+          git push origin release
+
+      - name: 将资产添加到 release 分支
+        run: |
+          git add *
+          git commit -m "同步 OpenWrt-mihomo 发布版本：${{ env.LATEST_TAG }}"
+          git push origin release
