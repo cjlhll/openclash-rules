@@ -15,7 +15,6 @@ curl -s -L https://gh-proxy.com/github.com/nikkinikki-org/OpenWrt-nikki/raw/refs
 opkg update
 opkg install openssh-sftp-server
 opkg install kmod-nft-socket kmod-nft-tproxy
-把passwall ipk文件放到tmp/pw目录
-直行opkg install *.ipk  会自动安装依赖。注意安装sing-box或者xray(可手动下载放到usr/bin里)。不然订阅时候会提示找不到可使用二进制
-https://github.com/SagerNet/sing-box/releases
+把passwall 安装文件和所有依赖 文件放到tmp/pw目录
+执行opkg install *.ipk
 ```
