@@ -16,5 +16,6 @@ opkg update
 opkg install openssh-sftp-server
 opkg install kmod-nft-socket kmod-nft-tproxy
 把passwall ipk文件放到tmp/pw目录
-直行opkg install *.ipk  会自动安装依赖。注意安装sing-box或者xray。不然订阅时候会提示找不到可使用二进制
+直行opkg install *.ipk  会自动安装依赖。注意安装sing-box或者xray(可手动下载放到usr/bin里)。不然订阅时候会提示找不到可使用二进制
+https://github.com/SagerNet/sing-box/releases
 ```
