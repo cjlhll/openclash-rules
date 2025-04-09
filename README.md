@@ -13,8 +13,7 @@ curl -s -L https://gh-proxy.com/github.com/nikkinikki-org/OpenWrt-nikki/raw/refs
 ### 安装passwall
 ```
 opkg update
-opkg install openssh-sftp-server
-opkg install kmod-nft-socket kmod-nft-tproxy
+opkg install openssh-sftp-server kmod-nft-socket kmod-nft-tproxy haproxy
 把passwall 安装文件和所有依赖 文件放到tmp/pw目录
 执行opkg install *.ipk
 ```
