@@ -1,5 +1,4 @@
 payload:
-  #- DOMAIN-SUFFIX,firebaselogging-pa.googleapis.com
   - DOMAIN-SUFFIX,googleads.g.doubleclick-cn.net
   - DOMAIN-SUFFIX,pagead2.googlesyndication.com
   - DOMAIN-SUFFIX,pagead2.googleadservices-cn.com
