@@ -19,6 +19,9 @@ payload:
   - DOMAIN-SUFFIX,v.lzcdn24.com
   - DOMAIN-SUFFIX,play.gotomymv.life
   - DOMAIN-SUFFIX,play.gotomymv.life
+  - DOMAIN-SUFFIX,danmu.loo.lol
+  - DOMAIN-SUFFIX,dmku.hls.one
+  - DOMAIN-SUFFIX,azure.leuse.top
   
   - DOMAIN-SUFFIX,dns.jd.com
   - DOMAIN-SUFFIX,dns.weibo.cn
