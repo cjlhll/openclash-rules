@@ -6,7 +6,7 @@ curl -s -L https://github.boki.moe/https://github.com/nikkinikki-org/OpenWrt-nik
 ```
 ### feed源方式
 ```
-curl -s -L https://gh-proxy.com/github.com/nikkinikki-org/OpenWrt-nikki/raw/refs/heads/main/feed.sh | ash
+wget -O - https://gh-proxy.com/https://github.com/nikkinikki-org/OpenWrt-nikki/raw/refs/heads/main/feed.sh | ash
 
 opkg install luci-i18n-nikki-zh-cn
 ```
