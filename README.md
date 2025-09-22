@@ -11,7 +11,7 @@ wget -O - https://gh-proxy.com/https://github.com/nikkinikki-org/OpenWrt-nikki/r
 opkg install luci-i18n-nikki-zh-cn
 ```
 
-### 安装必要插件
+### ⭐️安装必要插件
 ```
 opkg install luci-app-wol luci-i18n-base-zh-cn luci-i18n-package-manager-zh-cn
 ```
