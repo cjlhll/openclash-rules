@@ -89,12 +89,12 @@ jobs:
         
         # 创建release描述，转义JSON中的特殊字符
         RELEASE_DESCRIPTION="Mirror of OpenClash release ${{ steps.get_release.outputs.tag_name }}
-
-Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}
-
----
-
-$RELEASE_BODY_DECODED"
+        
+        Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}
+        
+        ---
+        
+        $RELEASE_BODY_DECODED"
         
         # 使用jq来正确处理JSON转义
         RELEASE_DATA=$(jq -n \
