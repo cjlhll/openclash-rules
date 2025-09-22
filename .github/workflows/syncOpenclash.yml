@@ -1,0 +1,34 @@
+name: Sync OpenClash IPK
+
+on:
+  schedule:
+    # 每天 2 点检查一次
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Get latest OpenClash release
+        id: get_release
+        run: |
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/vernesong/OpenClash/releases/latest)
+          VERSION=$(echo $RELEASE_JSON | jq -r '.tag_name')
+          URL=$(echo $RELEASE_JSON | jq -r '.assets[] | select(.name | test("luci-app-openclash_.*_all.ipk")) | .browser_download_url')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "URL=$URL" >> $GITHUB_ENV
+
+      - name: Download latest ipk
+        run: curl -L -o luci-app-openclash.ipk $URL
+
+      - name: Commit and push ipk
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add luci-app-openclash.ipk
+          git commit -m "Update OpenClash ipk to $VERSION" || echo "No changes"
+          git push
