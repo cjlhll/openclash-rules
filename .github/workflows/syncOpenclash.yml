@@ -107,7 +107,7 @@ jobs:
             "name": $name,
             "body": $body,
             "draft": false,
-            "prerelease": true
+            "prerelease": false
           }')
         
         # 创建release
