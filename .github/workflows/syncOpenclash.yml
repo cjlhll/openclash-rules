@@ -169,8 +169,8 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/vernesong/OpenClash/releases/tags/${{ steps.get_release.outputs.tag_name }}")
           
-          # 获取.ipk和.apk文件（匹配 luci-app-openclash 相关文件）
-          ASSETS=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("^luci-app-openclash.*\\.(ipk|apk)$")) | "\(.name)|\(.browser_download_url)"')
+          # 获取.ipk和.apk文件
+          ASSETS=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("\\.(ipk|apk)$")) | "\(.name)|\(.browser_download_url)"')
           
           # 创建临时目录
           mkdir -p /tmp/openclash_assets
@@ -179,7 +179,7 @@ jobs:
           # 下载.ipk和.apk文件
           if [ -n "$ASSETS" ] && [ "$ASSETS" != "null" ]; then
             ASSET_COUNT=$(echo "$ASSETS" | wc -l)
-            echo "📦 找到 $ASSET_COUNT 个 luci-app-openclash 相关的.ipk/.apk文件"
+            echo "📦 找到 $ASSET_COUNT 个.ipk/.apk文件"
             
             echo "$ASSETS" | while IFS='|' read -r asset_name download_url; do
               echo "⬇️  下载: $asset_name"
@@ -191,7 +191,7 @@ jobs:
             
             # 重命名文件，去掉版本后缀
             echo "🔄 重命名文件，去掉版本后缀..."
-            for file in luci-app-openclash*.ipk luci-app-openclash*.apk; do
+            for file in *.ipk *.apk; do
               if [ -f "$file" ]; then
                 # 提取基础文件名（去掉版本号）
                 if [[ "$file" == *".ipk" ]]; then
@@ -209,7 +209,7 @@ jobs:
               fi
             done
           else
-            echo "⚠️  未找到 luci-app-openclash 相关的.ipk/.apk文件"
+            echo "⚠️  未找到.ipk/.apk文件"
             exit 1
           fi
           
@@ -284,7 +284,7 @@ jobs:
           echo "📊 === 执行摘要 ==="
           echo "🏷️  版本标签: ${{ steps.get_release.outputs.tag_name }}"
           echo "📅 发布时间: ${{ steps.get_release.outputs.published_at }}"
-          echo "📁 原始资源文件: luci-app-openclash 相关的.ipk/.apk文件"
+          echo "📁 原始资源文件: 2 个.ipk/.apk文件"
           
           if [ "${{ steps.check_release.outputs.exists }}" = "true" ] && [ "${{ steps.check_release.outputs.force_update }}" = "false" ]; then
             echo "ℹ️  状态: 发布已存在，未进行更新"
