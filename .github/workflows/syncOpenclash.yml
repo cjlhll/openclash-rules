@@ -1,151 +1,237 @@
-name: 同步 OpenClash Releases
+---
+name: Mirror OpenClash Release to Repository
 
 on:
   # 手动触发
   workflow_dispatch:
-  # 定时触发（每天凌晨2点）
+    inputs:
+      force_update:
+        description: '强制更新已存在的release'
+        required: false
+        default: 'false'
+        type: boolean
+  # 定时触发 - 每天检查一次
   schedule:
-    - cron: '0 2 * * *'
-  # 推送代码时触发
-  push:
-    branches: [ main, master ]
+    - cron: '0 2 * * *'  # 每天凌晨2点执行
 
 jobs:
-  sync-releases:
+  mirror-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    timeout-minutes: 30
     
     steps:
-    - name: 检出代码
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
-
-    - name: 设置 Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-
-    - name: 安装依赖
-      run: |
-        npm install -g @octokit/rest
-
-    - name: 获取 OpenClash 最新 Release 信息
-      id: get-release
-      run: |
-        # 获取最新release信息（使用第一个release，因为该仓库没有latest标记）
-        LATEST_RELEASE=$(curl -s https://api.github.com/repos/vernesong/OpenClash/releases | jq '.[0]')
-        echo "latest_release<<EOF" >> $GITHUB_OUTPUT
-        echo "$LATEST_RELEASE" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+      - name: Checkout repository
+        uses: actions/checkout@v4
         
-        # 提取tag名称
-        TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
-        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+      - name: Install dependencies
+        run: |
+          # 确保必要工具已安装
+          sudo apt-get update
+          sudo apt-get install -y jq curl wget parallel
         
-        # 提取release名称
-        RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
-        echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-        
-        # 提取release描述
-        RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
-        echo "release_body<<EOF" >> $GITHUB_OUTPUT
-        echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-        
-        echo "获取到最新release: $TAG_NAME - $RELEASE_NAME"
-
-    - name: 检查是否已存在相同版本的Release
-      id: check-existing
-      run: |
-        # 检查当前仓库是否已存在相同tag的release
-        EXISTING_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get-release.outputs.tag_name }}" || echo "null")
-        
-        if [ "$EXISTING_RELEASE" != "null" ]; then
-          echo "已存在相同版本的release: ${{ steps.get-release.outputs.tag_name }}"
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "不存在相同版本的release，可以创建新release"
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: 下载 OpenClash Assets
-      if: steps.check-existing.outputs.exists == 'false'
-      run: |
-        # 创建下载目录
-        mkdir -p downloads
-        
-        # 获取assets列表并下载
-        echo "${{ steps.get-release.outputs.latest_release }}" | jq -r '.assets[] | .browser_download_url' | while read url; do
-          if [ -n "$url" ]; then
-            filename=$(basename "$url")
-            echo "正在下载: $filename"
-            curl -L -o "downloads/$filename" "$url"
-            echo "下载完成: $filename"
+      - name: Get latest OpenClash release
+        id: get_release
+        run: |
+          echo "🔍 正在获取OpenClash最新发布信息..."
+          
+          # 使用GitHub API获取最新的release信息（包括pre-release版本）
+          LATEST_RELEASE=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
+          
+          # 检查API响应是否有效
+          if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
+            echo "❌ 错误: 无法获取发布信息"
+            exit 1
           fi
-        done
-        
-        # 列出下载的文件
-        echo "已下载的文件："
-        ls -la downloads/
-
-    - name: 创建 Release
-      if: steps.check-existing.outputs.exists == 'false'
-      run: |
-        # 创建release
-        RELEASE_DATA=$(cat <<EOF
-        {
-          "tag_name": "${{ steps.get-release.outputs.tag_name }}",
-          "name": "${{ steps.get-release.outputs.release_name }}",
-          "body": "自动同步自 [OpenClash](https://github.com/vernesong/OpenClash) ${{ steps.get-release.outputs.tag_name }}\n\n${{ steps.get-release.outputs.release_body }}",
-          "draft": false,
-          "prerelease": false
-        }
-        EOF
-        )
-        
-        # 创建release
-        RELEASE_RESPONSE=$(curl -s -X POST \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          -d "$RELEASE_DATA" \
-          "https://api.github.com/repos/${{ github.repository }}/releases")
-        
-        # 获取release的upload_url
-        UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.upload_url' | sed 's/{?name,label}//')
-        echo "UPLOAD_URL=$UPLOAD_URL" >> $GITHUB_ENV
-        
-        echo "Release创建成功: ${{ steps.get-release.outputs.tag_name }}"
-
-    - name: 上传 Assets
-      if: steps.check-existing.outputs.exists == 'false'
-      run: |
-        # 上传所有下载的文件
-        for file in downloads/*; do
-          if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            echo "正在上传: $filename"
+          
+          # 检查是否为pre-release
+          IS_PRERELEASE=$(echo "$LATEST_RELEASE" | jq -r '.prerelease')
+          echo "📦 发现发布版本 - 预发布版本: $IS_PRERELEASE"
+          
+          # 提取release信息
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+          RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
+          PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
+          ASSETS_COUNT=$(echo "$LATEST_RELEASE" | jq '.assets | length')
+          
+          # 处理release body，转义特殊字符和换行符
+          RELEASE_BODY_RAW=$(echo "$LATEST_RELEASE" | jq -r '.body')
+          # 使用base64编码来安全传递包含特殊字符的内容
+          RELEASE_BODY_ENCODED=$(echo "$RELEASE_BODY_RAW" | base64 -w 0)
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
+          echo "release_body_encoded=$RELEASE_BODY_ENCODED" >> $GITHUB_OUTPUT
+          echo "assets_count=$ASSETS_COUNT" >> $GITHUB_OUTPUT
+          
+          echo "✅ 最新发布: $RELEASE_NAME ($TAG_NAME)"
+          echo "📅 发布时间: $PUBLISHED_AT"
+          echo "📁 资源文件数量: $ASSETS_COUNT"
+          echo "📝 描述长度: ${#RELEASE_BODY_RAW} 字符"
+          
+      - name: Check if release already exists
+        id: check_release
+        run: |
+          echo "🔍 检查发布版本是否已存在..."
+          
+          # 获取当前仓库的所有releases
+          EXISTING_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_release.outputs.tag_name }}")
+          
+          # 检查是否存在
+          if echo "$EXISTING_RELEASE" | jq -e '.id' > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "release_id=$(echo "$EXISTING_RELEASE" | jq -r '.id')" >> $GITHUB_OUTPUT
+            echo "📋 发布版本 ${{ steps.get_release.outputs.tag_name }} 已存在"
+            echo "🆔 发布ID: $(echo "$EXISTING_RELEASE" | jq -r '.id')"
             
-            curl -s -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$file" \
-              "$UPLOAD_URL?name=$filename"
-            
-            echo "上传完成: $filename"
+            # 检查是否强制更新
+            FORCE_UPDATE="${{ github.event.inputs.force_update }}"
+            if [ "$FORCE_UPDATE" = "true" ]; then
+              echo "force_update=true" >> $GITHUB_OUTPUT
+              echo "⚠️  强制更新模式已启用，将删除现有发布"
+            else
+              echo "force_update=false" >> $GITHUB_OUTPUT
+              echo "ℹ️  跳过更新 - 如需强制更新，请在手动触发时启用 force_update 选项"
+            fi
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "force_update=false" >> $GITHUB_OUTPUT
+            echo "✅ 发布版本 ${{ steps.get_release.outputs.tag_name }} 不存在，将创建新发布"
           fi
-        done
-
-    - name: 清理临时文件
-      if: always()
-      run: |
-        rm -rf downloads/
-
-    - name: 输出结果
-      run: |
-        if [ "${{ steps.check-existing.outputs.exists }}" == "true" ]; then
-          echo "✅ 已存在相同版本的release，跳过同步"
-        else
-          echo "✅ 成功同步OpenClash release: ${{ steps.get-release.outputs.tag_name }}"
-        fi
+          
+      - name: Delete existing release if force update
+        if: steps.check_release.outputs.exists == 'true' && steps.check_release.outputs.force_update == 'true'
+        run: |
+          echo "🗑️  正在删除现有发布..."
+          
+          # 删除现有的release
+          curl -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/${{ steps.check_release.outputs.release_id }}"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ 现有发布已删除"
+          else
+            echo "❌ 删除现有发布失败"
+            exit 1
+          fi
+          
+          # 删除对应的tag
+          echo "🏷️  正在删除现有标签..."
+          curl -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/${{ steps.get_release.outputs.tag_name }}"
+          
+          echo "✅ 现有标签已删除，准备创建新发布"
+          
+      - name: Create new release with assets
+        if: steps.check_release.outputs.exists == 'false' || steps.check_release.outputs.force_update == 'true'
+        run: |
+          echo "🚀 正在创建新的发布版本..."
+          
+          # 解码release body
+          RELEASE_BODY=$(echo "${{ steps.get_release.outputs.release_body_encoded }}" | base64 -d)
+          
+          # 创建release
+          RELEASE_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            -d "{
+              \"tag_name\": \"${{ steps.get_release.outputs.tag_name }}\",
+              \"name\": \"${{ steps.get_release.outputs.release_name }}\",
+              \"body\": $(echo "$RELEASE_BODY" | jq -R -s .),
+              \"draft\": false,
+              \"prerelease\": false
+            }")
+          
+          # 检查创建是否成功
+          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id')
+          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+            echo "❌ 创建发布失败"
+            echo "$RELEASE_RESPONSE" | jq .
+            exit 1
+          fi
+          
+          echo "✅ 发布创建成功，ID: $RELEASE_ID"
+          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+          
+          # 获取原始发布的资源文件
+          echo "📥 正在获取原始发布的资源文件..."
+          ASSETS=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/vernesong/OpenClash/releases/tags/${{ steps.get_release.outputs.tag_name }}" | \
+            jq -r '.assets[] | "\(.name)|\(.browser_download_url)"')
+          
+          if [ -z "$ASSETS" ]; then
+            echo "⚠️  未找到资源文件"
+          else
+            echo "📦 找到 $(echo "$ASSETS" | wc -l) 个资源文件"
+            
+            # 创建临时目录
+            mkdir -p /tmp/openclash_assets
+            cd /tmp/openclash_assets
+            
+            # 并行下载所有资源文件
+            echo "$ASSETS" | while IFS='|' read -r asset_name download_url; do
+              echo "⬇️  下载: $asset_name"
+              wget -q "$download_url" -O "$asset_name" &
+            done
+            wait  # 等待所有下载完成
+            
+            # 上传资源文件到新发布
+            for file in *; do
+              if [ -f "$file" ]; then
+                echo "⬆️  上传: $file"
+                curl -s -X POST \
+                  -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                  -H "Content-Type: application/octet-stream" \
+                  --data-binary @"$file" \
+                  "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$file" > /dev/null
+                
+                if [ $? -eq 0 ]; then
+                  echo "✅ $file 上传成功"
+                else
+                  echo "❌ $file 上传失败"
+                fi
+              fi
+            done
+            
+            # 清理临时文件
+            cd /
+            rm -rf /tmp/openclash_assets
+          fi
+          
+          echo "🎉 发布创建完成！"
+          
+      - name: Skip if release exists
+        if: steps.check_release.outputs.exists == 'true' && steps.check_release.outputs.force_update == 'false'
+        run: |
+          echo "⏭️  跳过发布创建 - 版本 ${{ steps.get_release.outputs.tag_name }} 已存在"
+          
+      - name: Summary
+        run: |
+          echo "📊 === 执行摘要 ==="
+          echo "🏷️  版本标签: ${{ steps.get_release.outputs.tag_name }}"
+          echo "📅 发布时间: ${{ steps.get_release.outputs.published_at }}"
+          echo "📁 资源文件: ${{ steps.get_release.outputs.assets_count }} 个"
+          
+          if [ "${{ steps.check_release.outputs.exists }}" = "true" ] && [ "${{ steps.check_release.outputs.force_update }}" = "false" ]; then
+            echo "ℹ️  状态: 发布已存在，未进行更新"
+            echo "💡 提示: 如需强制更新，请在手动触发时启用 force_update 选项"
+          elif [ "${{ steps.check_release.outputs.force_update }}" = "true" ]; then
+            echo "🔄 状态: 强制更新完成"
+            echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          else
+            echo "🆕 状态: 新发布创建完成"
+            echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          fi
+          
+          echo "📦 原始发布: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
