@@ -20,9 +20,21 @@ fi
 opkg install $PKGS --force-overwrite
 
 echo "[3/4] 获取最新 OpenClash ipk..."
-OPENCLASH_URL="https://github.com/vernesong/OpenClash/releases/latest/download/luci-app-openclash_all.ipk"
-echo "[*] 下载中: $OPENCLASH_URL"
-curl -L -o /tmp/openclash.ipk "$OPENCLASH_URL"
+# 通过 GitHub API 获取最新版下载链接
+LATEST_URL=$(curl -H "Authorization: token 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" https://api.github.com/repos/vernesong/OpenClash/releases/latest \
+    | grep browser_download_url \
+    | grep luci-app-openclash_ \
+    | grep _all.ipk \
+    | cut -d '"' -f 4)
+
+if [ -z "$LATEST_URL" ]; then
+    echo "[!] 获取 OpenClash 下载链接失败，请检查网络！"
+    exit 1
+fi
+
+echo "[*] 最新版本地址: $LATEST_URL"
+echo "[*] 下载中..."
+curl -L -o /tmp/openclash.ipk "$LATEST_URL"
 
 echo "[4/4] 安装 OpenClash..."
 opkg install /tmp/openclash.ipk
