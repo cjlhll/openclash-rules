@@ -27,14 +27,19 @@ jobs:
     - name: Get latest OpenClash release
       id: get_release
       run: |
-        # 使用GitHub API获取最新的release信息（OpenClash只有pre-release版本）
-        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | jq '.[0]')
+        # 使用GitHub API获取最新的release信息（包括pre-release版本）
+        # 获取所有releases，包括pre-release，然后选择最新的一个
+        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
         
         # 检查API响应是否有效
         if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
           echo "Error: Failed to get release information"
           exit 1
         fi
+        
+        # 检查是否为pre-release
+        IS_PRERELEASE=$(echo "$LATEST_RELEASE" | jq -r '.prerelease')
+        echo "Found release - Is prerelease: $IS_PRERELEASE"
         
         # 提取release信息
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
