@@ -15,6 +15,10 @@ opkg install luci-i18n-nikki-zh-cn
 ```
 wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-openclash.sh | sh
 ```
+### 一键安装luci-theme-design的脚本
+```
+wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-luci-theme-design.sh | sh
+```
 
 ### 安装passwall
 ```
