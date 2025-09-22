@@ -59,20 +59,30 @@ jobs:
         
         echo "Found $ASSETS_COUNT assets to download"
         
-        # 创建下载目录
-        mkdir -p openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}
-        cd openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}
+        # 创建下载目录（使用最短路径避免Windows路径长度限制）
+        mkdir -p assets
+        cd assets
+        
+        # 初始化下载统计
+        DOWNLOAD_SUCCESS=0
+        DOWNLOAD_FAILED=0
         
         # 下载所有assets文件
         echo "$RELEASE_DATA" | \
         jq -r '.assets[] | "\(.name) \(.browser_download_url)"' | \
         while read name url; do
           echo "Downloading: $name"
-          curl -L -o "$name" "$url"
-          if [ -f "$name" ]; then
-            echo "Downloaded: $name ($(ls -lh "$name" | awk '{print $5}'))"
+          if curl -L -o "$name" "$url"; then
+            if [ -f "$name" ] && [ -s "$name" ]; then
+              echo "✓ Downloaded: $name ($(ls -lh "$name" | awk '{print $5}'))"
+              DOWNLOAD_SUCCESS=$((DOWNLOAD_SUCCESS + 1))
+            else
+              echo "✗ Failed to download: $name (file is empty or missing)"
+              DOWNLOAD_FAILED=$((DOWNLOAD_FAILED + 1))
+            fi
           else
-            echo "Failed to download: $name"
+            echo "✗ Failed to download: $name (curl error)"
+            DOWNLOAD_FAILED=$((DOWNLOAD_FAILED + 1))
           fi
         done
         
@@ -80,10 +90,19 @@ jobs:
         echo "Downloaded files:"
         ls -la
         
+        # 检查下载结果
+        TOTAL_FILES=$(ls -1 | grep -v DOWNLOAD_SUMMARY.md | wc -l)
+        echo "Download Summary: $TOTAL_FILES files downloaded"
+        
+        if [ "$TOTAL_FILES" -eq 0 ]; then
+          echo "Error: No files were successfully downloaded"
+          exit 1
+        fi
+        
     - name: Create release summary
       run: |
         # 创建下载摘要文件
-        SUMMARY_FILE="openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}/DOWNLOAD_SUMMARY.md"
+        SUMMARY_FILE="assets/DOWNLOAD_SUMMARY.md"
         
         cat > "$SUMMARY_FILE" << EOF
         # OpenClash Release Download Summary
@@ -96,7 +115,7 @@ jobs:
         ## Downloaded Assets:
         EOF
         
-        cd openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}
+        cd assets
         for file in *; do
           if [ "$file" != "DOWNLOAD_SUMMARY.md" ]; then
             SIZE=$(ls -lh "$file" | awk '{print $5}')
@@ -114,11 +133,48 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: openclash-release-${{ steps.get_release.outputs.tag_name }}
-        path: openclash_assets/
+        path: assets/
         retention-days: 30
+        
+    - name: Commit and push changes
+      run: |
+        # 配置git用户信息
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # 检查是否有新文件或更改
+        echo "Checking for changes in the repository..."
+        git status --porcelain
+        
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Changes detected, committing files..."
+          
+          # 添加所有更改的文件
+          git add assets/
+          
+          # 显示将要提交的文件
+          echo "Files to be committed:"
+          git diff --cached --name-only
+          
+          # 提交更改
+          COMMIT_MSG="Auto-update OpenClash assets to ${{ steps.get_release.outputs.tag_name }} - $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo "Committing with message: $COMMIT_MSG"
+          git commit -m "$COMMIT_MSG"
+          
+          # 推送到仓库
+          echo "Pushing changes to repository..."
+          if git push; then
+            echo "✓ Successfully committed and pushed OpenClash assets"
+          else
+            echo "✗ Failed to push changes to repository"
+            exit 1
+          fi
+        else
+          echo "No changes to commit"
+        fi
         
     - name: Check for new release (optional notification)
       run: |
         # 这里可以添加通知逻辑，比如发送到Slack、Discord等
         echo "Release check completed for OpenClash ${{ steps.get_release.outputs.tag_name }}"
-        echo "You can download the artifacts from the Actions tab"
+        echo "Files have been committed to the repository in assets/ directory"
