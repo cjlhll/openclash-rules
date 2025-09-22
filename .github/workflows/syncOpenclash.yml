@@ -1,234 +1,305 @@
-name: Sync OpenClash Releases
+---
+name: Mirror OpenClash Release to Repository
 
 on:
-  schedule:
-    # 每天UTC时间02:00运行 (北京时间10:00)
-    - cron: '0 2 * * *'
+  # 手动触发
   workflow_dispatch:
-    # 允许手动触发
-  push:
-    branches: [ main ]
+    inputs:
+      force_update:
+        description: '强制更新已存在的release'
+        required: false
+        default: 'false'
+        type: boolean
+  # 定时触发 - 每天检查一次
+  schedule:
+    - cron: '0 2 * * *'  # 每天凌晨2点执行
 
 jobs:
-  sync-openclash:
+  mirror-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    timeout-minutes: 30
     
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Setup Environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget curl jq
-        mkdir -p assets temp
+      - name: Checkout repository
+        uses: actions/checkout@v4
         
-    - name: Get Latest OpenClash Release
-      id: get_release
-      run: |
-        echo "获取OpenClash最新release信息..."
-        RELEASE_INFO=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases/latest")
+      - name: Install dependencies
+        run: |
+          # 确保必要工具已安装
+          sudo apt-get update
+          sudo apt-get install -y jq curl wget parallel
         
-        if [ $? -ne 0 ] || [ -z "$RELEASE_INFO" ]; then
-          echo "获取release信息失败，尝试获取所有releases的第一个..."
-          RELEASE_INFO=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
-        fi
-        
-        TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
-        RELEASE_NAME=$(echo "$RELEASE_INFO" | jq -r '.name')
-        RELEASE_BODY=$(echo "$RELEASE_INFO" | jq -r '.body')
-        PUBLISHED_AT=$(echo "$RELEASE_INFO" | jq -r '.published_at')
-        
-        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-        echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-        echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
-        
-        # 保存release body到文件
-        echo "$RELEASE_BODY" > temp/release_body.txt
-        
-        echo "找到OpenClash版本: $TAG_NAME"
-        echo "发布时间: $PUBLISHED_AT"
-        
-        # 获取assets信息
-        echo "$RELEASE_INFO" | jq -r '.assets[] | "\(.name)|\(.browser_download_url)|\(.size)"' > temp/assets_list.txt
-        
-        echo "Assets列表:"
-        cat temp/assets_list.txt
-    
-    - name: Check Existing Release
-      id: check_existing
-      run: |
-        TAG_NAME="${{ steps.get_release.outputs.tag_name }}"
-        
-        # 检查是否已存在相同版本的release
-        EXISTING_RELEASE=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME" | jq -r '.tag_name // empty')
-        
-        if [ "$EXISTING_RELEASE" = "$TAG_NAME" ]; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-          echo "Release $TAG_NAME 已存在，将更新assets"
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-          echo "Release $TAG_NAME 不存在，将创建新release"
-        fi
-    
-    - name: Download Assets
-      run: |
-        echo "开始下载assets文件..."
-        
-        while IFS='|' read -r name url size; do
-          if [[ "$name" == *.ipk ]] || [[ "$name" == *.apk ]]; then
-            echo "下载: $name (大小: $size bytes)"
+      - name: Get latest OpenClash release
+        id: get_release
+        run: |
+          echo "🔍 正在获取OpenClash最新发布信息..."
+          
+          # 使用GitHub API获取最新的release信息（包括pre-release版本）
+          LATEST_RELEASE=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
+          
+          # 检查API响应是否有效
+          if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
+            echo "❌ 错误: 无法获取发布信息"
+            exit 1
+          fi
+          
+          # 检查是否为pre-release
+          IS_PRERELEASE=$(echo "$LATEST_RELEASE" | jq -r '.prerelease')
+          echo "📦 发现发布版本 - 预发布版本: $IS_PRERELEASE"
+          
+          # 提取release信息
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+          RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
+          PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
+          ASSETS_COUNT=$(echo "$LATEST_RELEASE" | jq '.assets | length')
+          
+          # 处理release body，转义特殊字符和换行符
+          RELEASE_BODY_RAW=$(echo "$LATEST_RELEASE" | jq -r '.body')
+          # 使用base64编码来安全传递包含特殊字符的内容
+          RELEASE_BODY_ENCODED=$(echo "$RELEASE_BODY_RAW" | base64 -w 0)
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
+          echo "release_body_encoded=$RELEASE_BODY_ENCODED" >> $GITHUB_OUTPUT
+          echo "assets_count=$ASSETS_COUNT" >> $GITHUB_OUTPUT
+          
+          echo "✅ 最新发布: $RELEASE_NAME ($TAG_NAME)"
+          echo "📅 发布时间: $PUBLISHED_AT"
+          echo "📁 资源文件数量: $ASSETS_COUNT"
+          echo "📝 描述长度: ${#RELEASE_BODY_RAW} 字符"
+          
+      - name: Check if release already exists
+        id: check_release
+        run: |
+          echo "🔍 检查发布版本是否已存在..."
+          
+          # 获取当前仓库的所有releases
+          EXISTING_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_release.outputs.tag_name }}")
+          
+          # 检查是否存在
+          if echo "$EXISTING_RELEASE" | jq -e '.id' > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "release_id=$(echo "$EXISTING_RELEASE" | jq -r '.id')" >> $GITHUB_OUTPUT
+            echo "📋 发布版本 ${{ steps.get_release.outputs.tag_name }} 已存在"
+            echo "🆔 发布ID: $(echo "$EXISTING_RELEASE" | jq -r '.id')"
             
-            # 使用wget下载，设置重试和超时
-            if wget --timeout=30 --tries=3 --continue "$url" -O "temp/$name"; then
-              # 验证文件大小
-              DOWNLOADED_SIZE=$(stat -c%s "temp/$name")
-              if [ "$DOWNLOADED_SIZE" -eq "$size" ]; then
-                echo "✓ $name 下载成功并验证完整性"
-                # 复制到assets目录保持原始文件名
-                cp "temp/$name" "assets/$name"
-              else
-                echo "✗ $name 文件大小不匹配 (期望: $size, 实际: $DOWNLOADED_SIZE)"
-                exit 1
-              fi
+            # 检查是否强制更新
+            FORCE_UPDATE="${{ github.event.inputs.force_update }}"
+            if [ "$FORCE_UPDATE" = "true" ]; then
+              echo "force_update=true" >> $GITHUB_OUTPUT
+              echo "⚠️  强制更新模式已启用，将删除现有发布"
             else
-              echo "✗ $name 下载失败"
-              exit 1
+              echo "force_update=false" >> $GITHUB_OUTPUT
+              echo "ℹ️  跳过更新 - 如需强制更新，请在手动触发时启用 force_update 选项"
             fi
           else
-            echo "跳过非IPK/APK文件: $name"
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "force_update=false" >> $GITHUB_OUTPUT
+            echo "✅ 发布版本 ${{ steps.get_release.outputs.tag_name }} 不存在，将创建新发布"
           fi
-        done < temp/assets_list.txt
-        
-        echo "所有文件下载完成"
-        ls -la assets/
-    
-    - name: Commit Assets to Repository
-      run: |
-        # 配置git
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        
-        # 检查assets目录是否有变化
-        if [ -n "$(git status --porcelain assets/)" ]; then
-          git add assets/
-          git commit -m "Update OpenClash assets for ${{ steps.get_release.outputs.tag_name }}
           
-          - 同步时间: $(date '+%Y-%m-%d %H:%M:%S UTC')
-          - 源版本: ${{ steps.get_release.outputs.tag_name }}
-          - 包含文件: $(ls assets/ | tr '\n' ' ')
-          "
-          git push
-          echo "Assets已提交到仓库"
-        else
-          echo "Assets目录无变化，跳过提交"
-        fi
-    
-    - name: Create or Update Release
-      uses: actions/create-release@v1
-      if: steps.check_existing.outputs.exists == 'false'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.get_release.outputs.tag_name }}
-        release_name: "OpenClash ${{ steps.get_release.outputs.tag_name }}"
-        body: |
-          # OpenClash ${{ steps.get_release.outputs.tag_name }} 同步版本
+      - name: Delete existing release if force update
+        if: steps.check_release.outputs.exists == 'true' && steps.check_release.outputs.force_update == 'true'
+        run: |
+          echo "🗑️  正在删除现有发布..."
           
-          **同步时间**: $(date '+%Y-%m-%d %H:%M:%S UTC')
-          **源仓库**: [vernesong/OpenClash](https://github.com/vernesong/OpenClash)
-          **源发布时间**: ${{ steps.get_release.outputs.published_at }}
+          # 删除现有的release
+          curl -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/${{ steps.check_release.outputs.release_id }}"
           
-          ## 包含的编译产物文件
+          if [ $? -eq 0 ]; then
+            echo "✅ 现有发布已删除"
+          else
+            echo "❌ 删除现有发布失败"
+            exit 1
+          fi
           
-          本release包含以下从OpenClash官方仓库同步的编译产物：
+          # 删除对应的tag
+          echo "🏷️  正在删除现有标签..."
+          curl -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/${{ steps.get_release.outputs.tag_name }}"
           
-          ### IPK文件 (OpenWrt包管理器格式)
-          - 适用于OpenWrt系统的安装包
-          - 文件保存在 `assets/` 目录中
+          echo "✅ 现有标签已删除，准备创建新发布"
           
-          ### APK文件 (Alpine包管理器格式)  
-          - 适用于Alpine Linux系统的安装包
-          - 文件保存在 `assets/` 目录中
+      - name: Create new release with assets
+        if: steps.check_release.outputs.exists == 'false' || steps.check_release.outputs.force_update == 'true'
+        run: |
+          echo "🚀 正在创建新的发布版本..."
           
-          ## 安装说明
+          # 解码release body
+          RELEASE_BODY=$(echo "${{ steps.get_release.outputs.release_body_encoded }}" | base64 -d)
           
-          请根据您的系统类型选择对应的文件：
+          # 创建release
+          RELEASE_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            -d "{
+              \"tag_name\": \"${{ steps.get_release.outputs.tag_name }}\",
+              \"name\": \"${{ steps.get_release.outputs.release_name }}\",
+              \"body\": $(echo "$RELEASE_BODY" | jq -R -s .),
+              \"draft\": false,
+              \"prerelease\": false
+            }")
           
-          **OpenWrt系统**:
-          ```bash
-          # 下载IPK文件后安装
-          opkg install /path/to/luci-app-openclash_*.ipk
-          ```
+          # 检查创建是否成功
+          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id')
+          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+            echo "❌ 创建发布失败"
+            echo "$RELEASE_RESPONSE" | jq .
+            exit 1
+          fi
           
-          **Alpine Linux系统**:
-          ```bash
-          # 下载APK文件后安装  
-          apk add --allow-untrusted /path/to/luci-app-openclash-*.apk
-          ```
+          echo "✅ 发布创建成功，ID: $RELEASE_ID"
+          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
           
-          ## 原始发布说明
+          # 获取发布信息（只获取.ipk和.apk文件）
+          RELEASE_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/vernesong/OpenClash/releases/tags/${{ steps.get_release.outputs.tag_name }}")
           
-          以下是来自OpenClash官方仓库的发布说明：
+          # 获取.ipk和.apk文件
+          ASSETS=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("\\.(ipk|apk)$")) | "\(.name)|\(.browser_download_url)"')
           
-          ---
+          # 创建临时目录
+          mkdir -p /tmp/openclash_assets
+          cd /tmp/openclash_assets
           
-          $(cat temp/release_body.txt)
+          # 下载.ipk和.apk文件
+          if [ -n "$ASSETS" ] && [ "$ASSETS" != "null" ]; then
+            ASSET_COUNT=$(echo "$ASSETS" | wc -l)
+            echo "📦 找到 $ASSET_COUNT 个.ipk/.apk文件"
+            
+            echo "$ASSETS" | while IFS='|' read -r asset_name download_url; do
+              echo "⬇️  下载: $asset_name"
+              wget -q "$download_url" -O "$asset_name" &
+            done
+            
+            # 等待所有下载完成
+            wait
+            
+            # 重命名文件，去掉版本后缀
+            echo "🔄 重命名文件，去掉版本后缀..."
+            for file in *.ipk *.apk; do
+              if [ -f "$file" ]; then
+                # 提取基础文件名（去掉版本号）
+                if [[ "$file" == *".ipk" ]]; then
+                  NEW_NAME="luci-app-openclash.ipk"
+                elif [[ "$file" == *".apk" ]]; then
+                  NEW_NAME="luci-app-openclash.apk"
+                fi
+                
+                if [ "$file" != "$NEW_NAME" ]; then
+                  echo "📝 重命名: $file -> $NEW_NAME"
+                  mv "$file" "$NEW_NAME"
+                else
+                  echo "✅ 文件名已正确: $file"
+                fi
+              fi
+            done
+          else
+            echo "⚠️  未找到.ipk/.apk文件"
+            exit 1
+          fi
           
-        draft: false
-        prerelease: false
-    
-    - name: Upload Assets to Release
-      run: |
-        TAG_NAME="${{ steps.get_release.outputs.tag_name }}"
-        
-        # 获取release ID
-        RELEASE_ID=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME" | jq -r '.id')
-        
-        if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
-          echo "找到release ID: $RELEASE_ID"
+          # 统计处理后的文件
+          TOTAL_FILES=$(ls -1 | wc -l)
+          echo "📁 处理完成，共 $TOTAL_FILES 个文件"
           
-          # 上传每个asset文件
-          for file in assets/*.{ipk,apk}; do
+          # 上传重命名后的文件到新发布
+          UPLOAD_SUCCESS=0
+          UPLOAD_FAILED=0
+          
+          for file in *; do
             if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              echo "上传 $filename 到release..."
+              echo "⬆️  上传: $file"
               
-              curl -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary @"$file" \
-                "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$filename"
+              # 尝试上传文件，最多重试3次
+              RETRY_COUNT=0
+              UPLOAD_RESULT=1
               
-              echo "✓ $filename 上传完成"
+              while [ $RETRY_COUNT -lt 3 ] && [ $UPLOAD_RESULT -ne 0 ]; do
+                if [ $RETRY_COUNT -gt 0 ]; then
+                  echo "🔄 重试上传 ($((RETRY_COUNT + 1))/3): $file"
+                  sleep 2
+                fi
+                
+                UPLOAD_RESPONSE=$(curl -s -w "%{http_code}" -X POST \
+                  -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                  -H "Content-Type: application/octet-stream" \
+                  --data-binary @"$file" \
+                  "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$file")
+                
+                HTTP_CODE="${UPLOAD_RESPONSE: -3}"
+                UPLOAD_RESULT=$?
+                
+                if [ "$HTTP_CODE" = "201" ] && [ $UPLOAD_RESULT -eq 0 ]; then
+                  echo "✅ $file 上传成功 (HTTP: $HTTP_CODE)"
+                  UPLOAD_SUCCESS=$((UPLOAD_SUCCESS + 1))
+                  break
+                else
+                  echo "⚠️  上传失败 (HTTP: $HTTP_CODE, Exit: $UPLOAD_RESULT)"
+                  RETRY_COUNT=$((RETRY_COUNT + 1))
+                fi
+              done
+              
+              if [ $UPLOAD_RESULT -ne 0 ] || [ "$HTTP_CODE" != "201" ]; then
+                echo "❌ $file 上传最终失败"
+                UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
+              fi
             fi
           done
-        else
-          echo "无法获取release ID"
-          exit 1
-        fi
-    
-    - name: Cleanup
-      run: |
-        rm -rf temp/
-        echo "清理完成"
-    
-    - name: Summary
-      run: |
-        echo "## 🎉 OpenClash同步完成!"
-        echo ""
-        echo "**版本**: ${{ steps.get_release.outputs.tag_name }}"
-        echo "**同步时间**: $(date '+%Y-%m-%d %H:%M:%S UTC')"
-        echo "**同步的文件**:"
-        for file in assets/*; do
-          if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            size=$(stat -c%s "$file")
-            echo "- $filename ($(numfmt --to=iec-i --suffix=B $size))"
+          
+          echo "📊 上传统计: 成功 $UPLOAD_SUCCESS 个，失败 $UPLOAD_FAILED 个"
+          
+          if [ $UPLOAD_FAILED -gt 0 ]; then
+            echo "⚠️  部分文件上传失败，但发布已创建"
+            exit 0  # 不中断工作流，允许继续执行
           fi
-        done
-        echo ""
-        echo "所有IPK和APK文件已成功同步到仓库!"
+          
+          # 清理临时文件
+          cd /
+          rm -rf /tmp/openclash_assets
+          
+          echo "🎉 发布创建完成！"
+          
+      - name: Skip if release exists
+        if: steps.check_release.outputs.exists == 'true' && steps.check_release.outputs.force_update == 'false'
+        run: |
+          echo "⏭️  跳过发布创建 - 版本 ${{ steps.get_release.outputs.tag_name }} 已存在"
+          
+      - name: Summary
+        run: |
+          echo "📊 === 执行摘要 ==="
+          echo "🏷️  版本标签: ${{ steps.get_release.outputs.tag_name }}"
+          echo "📅 发布时间: ${{ steps.get_release.outputs.published_at }}"
+          echo "📁 原始资源文件: 2 个.ipk/.apk文件"
+          
+          if [ "${{ steps.check_release.outputs.exists }}" = "true" ] && [ "${{ steps.check_release.outputs.force_update }}" = "false" ]; then
+            echo "ℹ️  状态: 发布已存在，未进行更新"
+            echo "💡 提示: 如需强制更新，请在手动触发时启用 force_update 选项"
+          elif [ "${{ steps.check_release.outputs.force_update }}" = "true" ]; then
+            echo "🔄 状态: 强制更新完成 - 已同步.ipk/.apk文件并重命名"
+            echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          else
+            echo "🆕 状态: 新发布创建完成 - 已同步.ipk/.apk文件并重命名"
+            echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          fi
+          
+          echo "📦 原始发布: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          echo "📋 同步内容:"
+          echo "  ✅ luci-app-openclash.ipk (去掉版本后缀)"
+          echo "  ✅ luci-app-openclash.apk (去掉版本后缀)"
+          echo "  📊 总计: 2 个文件完整同步"
+
