@@ -83,39 +83,54 @@ echo "[*] 下载完成，文件大小: $(du -h /tmp/openclash.ipk | cut -f1)"
 
 echo "[4/4] 安装 OpenClash..."
 
-# 检测 opkg 版本并使用合适的参数
-echo "[*] 检测 opkg 支持的参数..."
-
-# 检查是否支持新式参数格式
-if opkg --help 2>&1 | grep -q "\-\-force-maintainer"; then
-    echo "[*] 使用新版本 opkg 参数..."
-    FORCE_ARGS="--force-maintainer --force-overwrite --force-depends"
-elif opkg --help 2>&1 | grep -q "force-maintainer"; then
-    echo "[*] 使用兼容版本 opkg 参数..."
-    FORCE_ARGS="--force-maintainer --force-overwrite"
-else
-    echo "[*] 使用基础 opkg 参数..."
-    FORCE_ARGS="--force-overwrite"
+# 检查是否已经安装了 OpenClash
+if opkg list-installed | grep -q "luci-app-openclash"; then
+    echo "[*] 检测到已安装的 OpenClash，正在卸载..."
+    opkg remove luci-app-openclash --force-removal-of-dependent-packages 2>/dev/null || {
+        echo "[!] 卸载失败，尝试强制移除..."
+        opkg remove luci-app-openclash --force-depends 2>/dev/null || {
+            echo "[!] 无法卸载现有版本，继续安装可能会失败"
+        }
+    }
 fi
 
-echo "[*] 安装参数: $FORCE_ARGS"
+# 专门针对 OpenWrt 系统的 opkg 安装
+echo "[*] 使用 OpenWrt 专用参数安装..."
 
-# 安装 OpenClash
-if ! opkg install /tmp/openclash.ipk $FORCE_ARGS; then
-    echo "[!] 安装失败，尝试不使用强制参数..."
-    # 如果强制参数失败，尝试基本安装
-    if ! opkg install /tmp/openclash.ipk; then
-        echo "[!] 安装失败，可能的原因："
-        echo "    1. IPK 文件损坏"
-        echo "    2. 依赖包未正确安装"
-        echo "    3. 系统空间不足"
-        echo "    4. 配置文件冲突（请手动处理 /etc/config/ 目录下的 -opkg 备份文件）"
-        exit 1
-    else
-        echo "[*] 基本安装成功，但可能存在配置文件备份"
-    fi
+# 根据您提供的 opkg 帮助信息，使用正确的参数
+# --force-maintainer: 覆盖预存在的配置文件
+# --force-overwrite: 覆盖来自其他包的文件
+# --force-depends: 忽略依赖失败进行安装/移除
+
+echo "[*] 尝试使用完整强制参数安装..."
+if opkg install /tmp/openclash.ipk --force-maintainer --force-overwrite --force-depends 2>/dev/null; then
+    echo "[✓] 安装成功（使用完整强制参数）"
 else
-    echo "[*] 安装成功！"
+    echo "[*] 完整强制参数失败，尝试基础强制参数..."
+    if opkg install /tmp/openclash.ipk --force-overwrite 2>/dev/null; then
+        echo "[✓] 安装成功（使用基础强制参数）"
+    else
+        echo "[*] 强制参数失败，尝试标准安装..."
+        if opkg install /tmp/openclash.ipk; then
+            echo "[✓] 安装成功（标准安装）"
+            echo "[!] 注意：可能会创建配置文件备份"
+        else
+            echo "[!] 所有安装方式都失败了"
+            echo ""
+            echo "可能的原因："
+            echo "1. IPK 文件损坏 - 请重新下载"
+            echo "2. 依赖包缺失 - 请运行 'opkg update' 后重试"
+            echo "3. 系统空间不足 - 请检查存储空间"
+            echo "4. 权限问题 - 请确保以 root 身份运行"
+            echo "5. 已安装冲突版本 - 请先卸载：opkg remove luci-app-openclash"
+            echo ""
+            echo "调试信息："
+            echo "文件大小: $(ls -lh /tmp/openclash.ipk 2>/dev/null || echo '文件不存在')"
+            echo "可用空间: $(df -h /tmp | tail -1)"
+            echo "当前用户: $(whoami)"
+            exit 1
+        fi
+    fi
 fi
 
 # 清理可能产生的配置文件备份
