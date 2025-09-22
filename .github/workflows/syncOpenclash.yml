@@ -1,34 +1,51 @@
-name: Sync OpenClash IPK
+name: Sync OpenClash Release Assets
 
 on:
   schedule:
-    # 每天 2 点检查一次
-    - cron: '0 2 * * *'
-  workflow_dispatch:  # 支持手动触发
+    - cron: '0 2 * * *'   # 每天凌晨2点同步
+  workflow_dispatch:     # 支持手动触发
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Get latest OpenClash release
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Get latest OpenClash release info
         id: get_release
         run: |
-          RELEASE_JSON=$(curl -s https://api.github.com/repos/vernesong/OpenClash/releases/latest)
-          VERSION=$(echo $RELEASE_JSON | jq -r '.tag_name')
-          URL=$(echo $RELEASE_JSON | jq -r '.assets[] | select(.name | test("luci-app-openclash_.*_all.ipk")) | .browser_download_url')
+          # 使用 ghproxy 避免国内访问 API 限制
+          RELEASE_JSON=$(curl -s https://gh-proxy.com/https://api.github.com/repos/vernesong/OpenClash/releases/latest)
+          echo "$RELEASE_JSON" > release.json
+          # 获取 release tag
+          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "URL=$URL" >> $GITHUB_ENV
+          # 获取所有资产下载 URL
+          ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[].browser_download_url')
+          echo "$ASSETS" > assets.txt
+          echo "Assets to download:"
+          cat assets.txt
 
-      - name: Download latest ipk
-        run: curl -L -o luci-app-openclash.ipk $URL
+      - name: Download all assets
+        run: |
+          mkdir -p openclash_assets
+          while read URL; do
+            FILE_NAME=$(basename "$URL")
+            echo "Downloading $FILE_NAME ..."
+            curl -L -o "openclash_assets/$FILE_NAME" "$URL"
+          done < assets.txt
 
-      - name: Commit and push ipk
+      - name: Commit and push assets
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add luci-app-openclash.ipk
-          git commit -m "Update OpenClash ipk to $VERSION" || echo "No changes"
+          git add openclash_assets/*
+          git commit -m "Sync OpenClash release $VERSION" || echo "No changes"
           git push
