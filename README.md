@@ -20,7 +20,11 @@ opkg install luci-app-wol luci-i18n-base-zh-cn luci-i18n-package-manager-zh-cn
 ```
 wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-openclash.sh | sh
 ```
-### 一键安装luci-theme-design的脚本
+### 一键安装kiddin9源里的主题
+```
+curl -sSL https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-theme.sh -o /tmp/install-theme.sh && sh /tmp/install-theme.sh
+```
+### 一键安装luci-theme-design主题
 ```
 wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-luci-theme-design.sh | sh
 ```
