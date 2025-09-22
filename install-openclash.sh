@@ -21,7 +21,7 @@ opkg install $PKGS --force-overwrite
 
 echo "[3/4] 获取最新 OpenClash ipk..."
 # 通过 GitHub API 获取最新版下载链接
-LATEST_URL=$(curl -H "Authorization: token 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" https://api.github.com/repos/vernesong/OpenClash/releases/latest \
+LATEST_URL=$(curl -H "Authorization: token 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" https://gh-proxy.com/https://api.github.com/repos/vernesong/OpenClash/releases/latest \
     | grep browser_download_url \
     | grep luci-app-openclash_ \
     | grep _all.ipk \
