@@ -1,4 +1,4 @@
-### 安装[OpenWrt-mihomo](https://github.com/morytyann/OpenWrt-mihomo)脚本
+### 安装[OpenWrt-nikki](https://github.com/morytyann/OpenWrt-mihomo)脚本
 
 ### release安装方式
 ```shell
@@ -11,6 +11,10 @@ wget -O - https://gh-proxy.com/https://github.com/nikkinikki-org/OpenWrt-nikki/r
 opkg install luci-i18n-nikki-zh-cn
 ```
 
+### 一键安装openclash的脚本
+```
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-openclash.sh)"
+```
 
 ### 安装passwall
 ```
