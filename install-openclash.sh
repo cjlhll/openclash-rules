@@ -10,6 +10,15 @@ opkg update
 
 echo "[2/4] 安装依赖包..."
 
+# 预先清理可能存在的配置文件备份
+echo "[*] 预清理配置文件备份..."
+for backup_file in /etc/config/*-opkg; do
+    if [ -f "$backup_file" ]; then
+        echo "[*] 删除已存在的备份: $backup_file"
+        rm -f "$backup_file"
+    fi
+done
+
 PKGS="bash iptables dnsmasq-full curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra ruby ruby-yaml kmod-tun kmod-inet-diag unzip luci-compat luci luci-base"
 
 # 如果有 dnsmasq 就卸载
@@ -18,7 +27,21 @@ if opkg list-installed | grep -q "^dnsmasq "; then
     opkg remove dnsmasq
 fi
 
-opkg install $PKGS --force-overwrite
+# 静默安装依赖包，抑制配置文件冲突提示
+echo "[*] 安装依赖包（静默模式）..."
+opkg install $PKGS --force-overwrite --force-maintainer 2>/dev/null || {
+    echo "[*] 静默安装失败，尝试普通安装..."
+    opkg install $PKGS --force-overwrite --force-maintainer
+}
+
+# 安装后立即清理产生的备份文件
+echo "[*] 清理依赖包安装产生的备份文件..."
+for backup_file in /etc/config/*-opkg; do
+    if [ -f "$backup_file" ]; then
+        echo "[*] 删除备份文件: $backup_file"
+        rm -f "$backup_file"
+    fi
+done
 
 echo "[3/4] 获取最新 OpenClash ipk..."
 
@@ -160,4 +183,5 @@ echo "重要提醒："
 echo "- 首次使用需要在 OpenClash 界面中下载内核文件"
 echo "- 建议重启路由器以确保所有服务正常运行"
 echo "- 源仓库: https://github.com/cjlhll/openclash-rules"
+echo "- 加速镜像: https://gh-proxy.com/"
 echo "=================================================="
