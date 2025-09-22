@@ -1,57 +1,70 @@
 #!/bin/sh
-# 脚本：添加供 dl.openwrt.ai 源，并安装 luci-theme-design，处理签名或关闭签名验证
 
-set -e
+# dl.openwrt.ai feed (kiddin9) with nikkinikki key
 
-FEED_NAME="kiddin9"
-ARCH="aarch64_cortex-a53"    # 可根据你的设备架构改
-OPENWRT_VER="24.10"          # 你当前 OpenWrt 版本
-BASE_URL="https://dl.openwrt.ai/releases/$OPENWRT_VER/packages/$ARCH/$FEED_NAME"
-FEED_LINE="src/gz $FEED_NAME $BASE_URL"
-
-# 公钥文件 URL（如果有的话；你需要确认 dl.openwrt.ai 是否有提供公钥）
-PUBKEY_URL="$BASE_URL/pubkey-build.pub"
-PUBKEY_FILE="/tmp/pubkey-$FEED_NAME.pub"
-
-# 路径配置
-DISTFEEDS_CONF="/etc/opkg/distfeeds.conf"
-CUSTOMFEEDS_CONF="/etc/opkg/customfeeds.conf"
-OPKG_CONF="/etc/opkg.conf"
-
-echo "=== 添加 $FEED_NAME 源 ==="
-
-# 添加 feed 到 customfeeds
-if grep -q "$FEED_LINE" "$CUSTOMFEEDS_CONF"; then
-  echo "Feed 已存在： $FEED_LINE"
-else
-  echo "Adding feed line to $CUSTOMFEEDS_CONF"
-  echo "$FEED_LINE" >> "$CUSTOMFEEDS_CONF"
+# check env
+if [[ ! -x "/bin/opkg" && ! -x "/usr/bin/apk" || ! -x "/sbin/fw4" ]]; then
+    echo "only supports OpenWrt build with firewall4!"
+    exit 1
 fi
 
-# 尝试下载公钥并添加
-echo "=== 尝试获取公钥： $PUBKEY_URL"
-if wget -q -O "$PUBKEY_FILE" "$PUBKEY_URL"; then
-  echo "公钥下载成功，添加到 opkg-key"
-  opkg-key add "$PUBKEY_FILE" || {
-    echo "opkg-key add 失败"
-  }
-  rm -f "$PUBKEY_FILE"
-else
-  echo "无法下载公钥，可能源不支持签名或没有公钥"
-  echo "关闭签名验证"
-  # 在 opkg.conf 中设置不校验签名
-  # 检查是否已有该选项
-  grep -q "^option check_signature 0" "$OPKG_CONF" || {
-    echo "option check_signature 0" >> "$OPKG_CONF"
-  }
+# include openwrt_release
+. /etc/openwrt_release
+
+# get branch/arch
+arch="$DISTRIB_ARCH"
+branch=
+case "$DISTRIB_RELEASE" in
+    *"23.05"*)
+        branch="23.05"
+        ;;
+    *"24.10"*)
+        branch="24.10"
+        ;;
+    "SNAPSHOT")
+        branch="SNAPSHOT"
+        ;;
+    *)
+        echo "unsupported release: $DISTRIB_RELEASE"
+        exit 1
+        ;;
+esac
+
+# feed url
+repository_url="https://dl.openwrt.ai/releases"
+feed_url="$repository_url/$branch/packages/$arch/kiddin9"
+
+# 公钥仍然使用 nikkinikki 的
+key_url="https://nikkinikki.pages.dev/key-build.pub"
+
+if [ -x "/bin/opkg" ]; then
+    # add key
+    echo "add key"
+    key_build_pub_file="key-build.pub"
+    wget -O "$key_build_pub_file" "$key_url"
+    opkg-key add "$key_build_pub_file"
+    rm -f "$key_build_pub_file"
+    # add feed
+    echo "add feed"
+    if grep -q kiddin9 /etc/opkg/customfeeds.conf; then
+        sed -i '/kiddin9/d' /etc/opkg/customfeeds.conf
+    fi
+    echo "src/gz kiddin9 $feed_url" >> /etc/opkg/customfeeds.conf
+    # update feeds
+    echo "update feeds"
+    opkg update
+elif [ -x "/usr/bin/apk" ]; then
+    # add key
+    echo "add key"
+    wget -O "/etc/apk/keys/dlopenwrt.pem" "$key_url"
+    # add feed
+    echo "add feed"
+    if grep -q kiddin9 /etc/apk/repositories.d/customfeeds.list; then
+        sed -i '/kiddin9/d' /etc/apk/repositories.d/customfeeds.list
+    fi
+    echo "$feed_url/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
+    # update feeds
+    echo "update feeds"
 fi
 
-# 更新
-echo "=== 更新 feed 列表 ==="
-opkg update
-
-# 安装包
-echo "=== 安装 luci-theme-design ==="
-opkg install luci-theme-design
-
-echo "=== 完成 ==="
+echo "success"
