@@ -11,6 +11,11 @@ wget -O - https://gh-proxy.com/https://github.com/nikkinikki-org/OpenWrt-nikki/r
 opkg install luci-i18n-nikki-zh-cn
 ```
 
+### 一键添加kiddin9源
+```
+wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/add-kiddin9-source.sh | sh
+```
+
 ### 一键安装openclash的脚本
 ```
 wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-openclash.sh | sh
