@@ -1,238 +1,151 @@
-name: Mirror OpenClash Release to Repository
+name: 同步 OpenClash Releases
 
 on:
   # 手动触发
   workflow_dispatch:
-  # 定时触发 - 每天检查一次
+  # 定时触发（每天凌晨2点）
   schedule:
-    - cron: '0 8 * * *'  # 每天早上8点UTC时间运行
+    - cron: '0 2 * * *'
+  # 推送代码时触发
+  push:
+    branches: [ main, master ]
 
 jobs:
-  mirror-openclash-release:
+  sync-releases:
     runs-on: ubuntu-latest
     
-    permissions:
-      contents: write  # 需要写权限来创建release
-    
     steps:
-    - name: Checkout repository
+    - name: 检出代码
       uses: actions/checkout@v4
-      
-    - name: Install dependencies
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: 设置 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: 安装依赖
       run: |
-        # 确保jq已安装
-        sudo apt-get update
-        sudo apt-get install -y jq curl
-      
-    - name: Get latest OpenClash release
-      id: get_release
+        npm install -g @octokit/rest
+
+    - name: 获取 OpenClash 最新 Release 信息
+      id: get-release
       run: |
-        # 使用GitHub API获取最新的release信息（包括pre-release版本）
-        # 获取所有releases，包括pre-release，然后选择最新的一个
-        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
+        # 获取最新release信息（使用第一个release，因为该仓库没有latest标记）
+        LATEST_RELEASE=$(curl -s https://api.github.com/repos/vernesong/OpenClash/releases | jq '.[0]')
+        echo "latest_release<<EOF" >> $GITHUB_OUTPUT
+        echo "$LATEST_RELEASE" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
         
-        # 检查API响应是否有效
-        if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
-          echo "Error: Failed to get release information"
-          exit 1
-        fi
-        
-        # 检查是否为pre-release
-        IS_PRERELEASE=$(echo "$LATEST_RELEASE" | jq -r '.prerelease')
-        echo "Found release - Is prerelease: $IS_PRERELEASE"
-        
-        # 提取release信息
+        # 提取tag名称
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
-        RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
-        PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
-        
-        # 处理release body，转义特殊字符和换行符
-        RELEASE_BODY_RAW=$(echo "$LATEST_RELEASE" | jq -r '.body')
-        # 使用base64编码来安全传递包含特殊字符的内容
-        RELEASE_BODY_ENCODED=$(echo "$RELEASE_BODY_RAW" | base64 -w 0)
-        
         echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        
+        # 提取release名称
+        RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
         echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-        echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
-        echo "release_body_encoded=$RELEASE_BODY_ENCODED" >> $GITHUB_OUTPUT
         
-        echo "Latest Release: $RELEASE_NAME ($TAG_NAME)"
-        echo "Published at: $PUBLISHED_AT"
-        echo "Body length: ${#RELEASE_BODY_RAW} characters"
+        # 提取release描述
+        RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
+        echo "release_body<<EOF" >> $GITHUB_OUTPUT
+        echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
         
-    - name: Check if release already exists
-      id: check_release
+        echo "获取到最新release: $TAG_NAME - $RELEASE_NAME"
+
+    - name: 检查是否已存在相同版本的Release
+      id: check-existing
       run: |
-        # 检查当前仓库是否已经有相同tag的release
+        # 检查当前仓库是否已存在相同tag的release
         EXISTING_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_release.outputs.tag_name }}" | jq -r '.tag_name')
+          "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get-release.outputs.tag_name }}" || echo "null")
         
-        if [ "$EXISTING_RELEASE" = "${{ steps.get_release.outputs.tag_name }}" ]; then
-          echo "Release ${{ steps.get_release.outputs.tag_name }} already exists in this repository"
+        if [ "$EXISTING_RELEASE" != "null" ]; then
+          echo "已存在相同版本的release: ${{ steps.get-release.outputs.tag_name }}"
           echo "exists=true" >> $GITHUB_OUTPUT
         else
-          echo "Release ${{ steps.get_release.outputs.tag_name }} does not exist, will create new release"
+          echo "不存在相同版本的release，可以创建新release"
           echo "exists=false" >> $GITHUB_OUTPUT
         fi
-        
-    - name: Create new release with assets
-      if: steps.check_release.outputs.exists == 'false'
+
+    - name: 下载 OpenClash Assets
+      if: steps.check-existing.outputs.exists == 'false'
       run: |
-        # 获取OpenClash release的所有assets
-        ASSETS=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | jq '.[0].assets')
+        # 创建下载目录
+        mkdir -p downloads
         
-        # 检查是否有assets
-        if [ "$ASSETS" = "null" ] || [ "$ASSETS" = "[]" ]; then
-          echo "No assets found in the latest OpenClash release"
-          exit 1
-        fi
-        
-        echo "Found $(echo "$ASSETS" | jq 'length') assets to mirror"
-        
-        # 解码release body
-        RELEASE_BODY_DECODED=$(echo "${{ steps.get_release.outputs.release_body_encoded }}" | base64 -d)
-        
-        # 创建release描述，转义JSON中的特殊字符
-        RELEASE_DESCRIPTION="Mirror of OpenClash release ${{ steps.get_release.outputs.tag_name }}
-        
-        Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}
-        
-        ---
-        
-        $RELEASE_BODY_DECODED"
-        
-        # 使用jq来正确处理JSON转义
-        RELEASE_DATA=$(jq -n \
-          --arg tag "${{ steps.get_release.outputs.tag_name }}" \
-          --arg name "OpenClash ${{ steps.get_release.outputs.tag_name }}" \
-          --arg body "$RELEASE_DESCRIPTION" \
-          '{
-            "tag_name": $tag,
-            "target_commitish": "main",
-            "name": $name,
-            "body": $body,
-            "draft": false,
-            "prerelease": false
-          }')
-        
-        # 创建release
-        NEW_RELEASE=$(curl -s -X POST \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/${{ github.repository }}/releases" \
-          -d "$RELEASE_DATA")
-        
-        # 获取新创建的release ID
-        RELEASE_ID=$(echo "$NEW_RELEASE" | jq -r '.id')
-        
-        if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
-          echo "Error: Failed to create release"
-          echo "Response:"
-          echo "$NEW_RELEASE" | jq '.'
-          exit 1
-        fi
-        
-        echo "Created release with ID: $RELEASE_ID"
-        echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
-        
-        # 下载并上传每个asset
-        UPLOAD_SUCCESS=0
-        UPLOAD_FAILED=0
-        
-        echo "$ASSETS" | jq -c '.[]' | while read -r asset; do
-          ASSET_NAME=$(echo "$asset" | jq -r '.name')
-          ASSET_URL=$(echo "$asset" | jq -r '.browser_download_url')
-          ASSET_SIZE=$(echo "$asset" | jq -r '.size')
-          
-          echo "Processing asset: $ASSET_NAME (Size: $ASSET_SIZE bytes)"
-          
-          # 处理文件名，去除版本号
-          RENAMED_ASSET=""
-          if [[ "$ASSET_NAME" =~ ^luci-app-openclash.*\.(ipk|apk)$ ]]; then
-            # 对于 .ipk 文件：luci-app-openclash_0.47.006_all.ipk -> luci-app-openclash.ipk
-            # 对于 .apk 文件：luci-app-openclash-0.47.006.apk -> luci-app-openclash.apk
-            if [[ "$ASSET_NAME" == *.ipk ]]; then
-              RENAMED_ASSET="luci-app-openclash.ipk"
-            elif [[ "$ASSET_NAME" == *.apk ]]; then
-              RENAMED_ASSET="luci-app-openclash.apk"
-            fi
-            echo "Renaming: $ASSET_NAME -> $RENAMED_ASSET"
-          else
-            RENAMED_ASSET="$ASSET_NAME"
-            echo "Keeping original name: $ASSET_NAME"
-          fi
-          
-          # 下载asset到临时文件
-          TEMP_FILE="/tmp/$ASSET_NAME"
-          echo "Downloading $ASSET_URL to $TEMP_FILE"
-          
-          if curl -L -o "$TEMP_FILE" "$ASSET_URL"; then
-            # 验证下载的文件大小
-            ACTUAL_SIZE=$(stat -c%s "$TEMP_FILE" 2>/dev/null || echo "0")
-            if [ "$ACTUAL_SIZE" -eq "$ASSET_SIZE" ]; then
-              echo "✓ Successfully downloaded $ASSET_NAME ($ACTUAL_SIZE bytes)"
-              
-              # 上传asset到新的release
-              echo "Uploading $RENAMED_ASSET to release..."
-              UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$(echo "$RENAMED_ASSET" | sed 's/ /%20/g')"
-              
-              UPLOAD_RESPONSE=$(curl -s -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary "@$TEMP_FILE" \
-                "$UPLOAD_URL")
-              
-              UPLOAD_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.id')
-              
-              if [ "$UPLOAD_ID" != "null" ] && [ -n "$UPLOAD_ID" ]; then
-                echo "✓ Successfully uploaded $RENAMED_ASSET (Upload ID: $UPLOAD_ID)"
-                UPLOAD_SUCCESS=$((UPLOAD_SUCCESS + 1))
-              else
-                echo "✗ Error uploading $RENAMED_ASSET:"
-                echo "$UPLOAD_RESPONSE" | jq '.'
-                UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
-              fi
-            else
-              echo "✗ File size mismatch for $ASSET_NAME. Expected: $ASSET_SIZE, Actual: $ACTUAL_SIZE"
-              UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
-            fi
-            
-            # 清理临时文件
-            rm -f "$TEMP_FILE"
-          else
-            echo "✗ Error: Failed to download $ASSET_NAME from $ASSET_URL"
-            UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
+        # 获取assets列表并下载
+        echo "${{ steps.get-release.outputs.latest_release }}" | jq -r '.assets[] | .browser_download_url' | while read url; do
+          if [ -n "$url" ]; then
+            filename=$(basename "$url")
+            echo "正在下载: $filename"
+            curl -L -o "downloads/$filename" "$url"
+            echo "下载完成: $filename"
           fi
         done
         
-        echo "Release creation completed"
-        echo "Assets uploaded successfully: $UPLOAD_SUCCESS"
-        echo "Assets failed to upload: $UPLOAD_FAILED"
-        
-    - name: Skip if release exists
-      if: steps.check_release.outputs.exists == 'true'
+        # 列出下载的文件
+        echo "已下载的文件："
+        ls -la downloads/
+
+    - name: 创建 Release
+      if: steps.check-existing.outputs.exists == 'false'
       run: |
-        echo "Release ${{ steps.get_release.outputs.tag_name }} already exists in this repository"
-        echo "Skipping release creation"
+        # 创建release
+        RELEASE_DATA=$(cat <<EOF
+        {
+          "tag_name": "${{ steps.get-release.outputs.tag_name }}",
+          "name": "${{ steps.get-release.outputs.release_name }}",
+          "body": "自动同步自 [OpenClash](https://github.com/vernesong/OpenClash) ${{ steps.get-release.outputs.tag_name }}\n\n${{ steps.get-release.outputs.release_body }}",
+          "draft": false,
+          "prerelease": false
+        }
+        EOF
+        )
         
-    - name: Summary
+        # 创建release
+        RELEASE_RESPONSE=$(curl -s -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          -d "$RELEASE_DATA" \
+          "https://api.github.com/repos/${{ github.repository }}/releases")
+        
+        # 获取release的upload_url
+        UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.upload_url' | sed 's/{?name,label}//')
+        echo "UPLOAD_URL=$UPLOAD_URL" >> $GITHUB_ENV
+        
+        echo "Release创建成功: ${{ steps.get-release.outputs.tag_name }}"
+
+    - name: 上传 Assets
+      if: steps.check-existing.outputs.exists == 'false'
       run: |
-        if [ "${{ steps.check_release.outputs.exists }}" = "true" ]; then
-          echo "📋 Release Summary"
-          echo "=================="
-          echo "✓ Release ${{ steps.get_release.outputs.tag_name }} already exists in this repository"
-          echo "📅 Published: ${{ steps.get_release.outputs.published_at }}"
-          echo "🔗 View release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
-          echo ""
-          echo "ℹ️  No action needed - release is up to date"
+        # 上传所有下载的文件
+        for file in downloads/*; do
+          if [ -f "$file" ]; then
+            filename=$(basename "$file")
+            echo "正在上传: $filename"
+            
+            curl -s -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$file" \
+              "$UPLOAD_URL?name=$filename"
+            
+            echo "上传完成: $filename"
+          fi
+        done
+
+    - name: 清理临时文件
+      if: always()
+      run: |
+        rm -rf downloads/
+
+    - name: 输出结果
+      run: |
+        if [ "${{ steps.check-existing.outputs.exists }}" == "true" ]; then
+          echo "✅ 已存在相同版本的release，跳过同步"
         else
-          echo "📋 Release Summary"
-          echo "=================="
-          echo "✅ Successfully mirrored OpenClash release ${{ steps.get_release.outputs.tag_name }}"
-          echo "📅 Original published: ${{ steps.get_release.outputs.published_at }}"
-          echo "📦 Release body length: ${{ steps.get_release.outputs.body_length }} characters"
-          echo "🔗 Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
-          echo "🔗 Mirrored release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
-          echo ""
-          echo "🎉 Mirror operation completed successfully!"
+          echo "✅ 成功同步OpenClash release: ${{ steps.get-release.outputs.tag_name }}"
         fi
