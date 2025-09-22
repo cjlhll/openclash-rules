@@ -1,12 +1,13 @@
 #!/bin/sh
-# OpenWrt 安装 luci-theme-argon 最新版本
+# 安装 luci-theme-argon 最新版本（OpenWrt ash 兼容）
 
-# GitHub API 地址
+# GitHub API 获取最新 release
 API_URL="https://api.github.com/repos/jerrykuku/luci-theme-argon/releases/latest"
 
 echo "[1/3] 获取 luci-theme-argon 最新 release 信息..."
-# 获取最新 release 的 download URL
-URL=$(curl -s $API_URL | grep "browser_download_url" | grep "luci-theme-argon.*\.ipk" | head -n 1 | cut -d '"' -f 4)
+
+# 获取 assets 中 browser_download_url 链接
+URL=$(curl -s $API_URL | grep "browser_download_url" | grep "luci-theme-argon.*\.ipk\|\.apk" | head -n 1 | cut -d '"' -f 4)
 
 if [ -z "$URL" ]; then
     echo "未找到 luci-theme-argon 最新 ipk 文件"
