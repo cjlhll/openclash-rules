@@ -1,44 +1,39 @@
-name: Sync OpenClash Release Assets
+name: Sync OpenClash Release
 
-# 支持定时触发和手动触发
 on:
   schedule:
-    - cron: '0 2 * * *'   # 每天凌晨 2 点同步
+    - cron: '0 0 * * *' # 每天运行一次，可根据需要调整
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-
     steps:
-      # Step 1: 检出仓库
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: 安装依赖工具
       - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl grep sed
+        run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      # Step 3: 获取 OpenClash 最新 release 页面并解析资产链接
-      - name: Get latest release asset URLs
+      - name: Get latest OpenClash release info
+        id: get_release
         run: |
-          # 使用 ghproxy 加速访问
-          RELEASE_PAGE=$(curl -s https://github.com/vernesong/OpenClash/releases/latest)
+          # 获取最新 release JSON
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/vernesong/OpenClash/releases/latest)
+          echo "$RELEASE_JSON" > release.json
+          
+          # 获取 release tag
+          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-          # 解析 HTML 中的下载链接，匹配所有资产
-          echo "$RELEASE_PAGE" | grep -o 'href="[^"]*"' \
-            | grep '/vernesong/OpenClash/releases/download/' \
-            | sed 's/href="//;s/"//' \
-            | sed 's|^|https://ghproxy.com/https://github.com|' \
-            > assets.txt
+          # 获取所有 assets 下载链接
+          ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[].browser_download_url')
+          echo "$ASSETS" > assets.txt
 
           echo "Found assets:"
           cat assets.txt
 
-      # Step 4: 下载所有资产到指定目录
-      - name: Download all assets
+      - name: Download assets
         run: |
           mkdir -p openclash_assets
           while read URL; do
@@ -47,11 +42,10 @@ jobs:
             curl -L -o "openclash_assets/$FILE_NAME" "$URL"
           done < assets.txt
 
-      # Step 5: Commit 并 push 到仓库
-      - name: Commit and push assets
+      - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add openclash_assets/*
-          git commit -m "Sync OpenClash release $(date +%Y-%m-%d)" || echo "No changes"
+          git commit -m "Sync OpenClash release ${{ env.VERSION }}" || echo "No changes"
           git push
