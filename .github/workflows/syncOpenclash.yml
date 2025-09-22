@@ -25,7 +25,7 @@ jobs:
       - name: Get latest release asset URLs
         run: |
           # 使用 ghproxy 加速访问
-          RELEASE_PAGE=$(curl -s https://ghproxy.com/https://github.com/vernesong/OpenClash/releases/latest)
+          RELEASE_PAGE=$(curl -s https://github.com/vernesong/OpenClash/releases/latest)
 
           # 解析 HTML 中的下载链接，匹配所有资产
           echo "$RELEASE_PAGE" | grep -o 'href="[^"]*"' \
