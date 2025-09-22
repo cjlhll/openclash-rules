@@ -1,5 +1,5 @@
 #!/bin/sh
-# OpenWrt ash 兼容版本 - 纯命令行选择安装 luci-theme
+# OpenWrt ash 兼容版本111 - 命令行选择安装 luci-theme
 
 BASE_URL="https://dl.openwrt.ai/releases/24.10/packages/aarch64_cortex-a53/kiddin9"
 
@@ -11,7 +11,7 @@ if [ -z "$THEMES" ]; then
     exit 1
 fi
 
-# 输出带编号的列表，存到临时文件
+# 输出带编号的列表，写入临时文件
 TMPFILE=$(mktemp)
 i=1
 echo "$THEMES" | while read t; do
