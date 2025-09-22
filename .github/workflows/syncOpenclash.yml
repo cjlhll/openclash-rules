@@ -27,9 +27,8 @@ jobs:
     - name: Get latest OpenClash release
       id: get_release
       run: |
-        # 使用GitHub API获取最新的release信息（包括pre-release版本）
-        # 获取所有releases，包括pre-release，然后选择最新的一个
-        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
+        # 使用GitHub API获取最新的“正式”release（排除 pre-release）
+        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=100" | jq '[.[] | select(.prerelease == false)] | .[0]')
         
         # 检查API响应是否有效
         if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
@@ -45,6 +44,7 @@ jobs:
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
         RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
         PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
+        ASSETS_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets_url')
         
         # 处理release body，转义特殊字符和换行符
         RELEASE_BODY_RAW=$(echo "$LATEST_RELEASE" | jq -r '.body')
@@ -55,10 +55,12 @@ jobs:
         echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
         echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
         echo "release_body_encoded=$RELEASE_BODY_ENCODED" >> $GITHUB_OUTPUT
+        echo "assets_url=$ASSETS_URL" >> $GITHUB_OUTPUT
         
         echo "Latest Release: $RELEASE_NAME ($TAG_NAME)"
         echo "Published at: $PUBLISHED_AT"
         echo "Body length: ${#RELEASE_BODY_RAW} characters"
+        echo "body_length=${#RELEASE_BODY_RAW}" >> $GITHUB_OUTPUT
         
     - name: Check if release already exists
       id: check_release
@@ -78,14 +80,11 @@ jobs:
     - name: Create new release with assets
       if: steps.check_release.outputs.exists == 'false'
       run: |
-        # 重新获取之前的release信息
-        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
-        
-        # 获取OpenClash release的所有assets（使用之前获取的同一个release）
-        ASSETS=$(echo "$LATEST_RELEASE" | jq '.assets')
+        # 获取OpenClash release的所有assets（来自选定的稳定版 release）
+        ASSETS=$(curl -s "${{ steps.get_release.outputs.assets_url }}")
         
         # 检查是否有assets
-        if [ "$ASSETS" = "null" ] || [ "$ASSETS" = "[]" ]; then
+        if [ -z "$ASSETS" ] || [ "$ASSETS" = "null" ] || [ "$ASSETS" = "[]" ]; then
           echo "No assets found in the latest OpenClash release"
           exit 1
         fi
