@@ -13,7 +13,7 @@ opkg install luci-i18n-nikki-zh-cn
 
 ### 一键安装openclash的脚本
 ```
-sh -c "$(curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-openclash.sh)"
+wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/install-openclash.sh | sh
 ```
 
 ### 安装passwall
