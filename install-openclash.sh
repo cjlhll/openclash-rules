@@ -47,18 +47,27 @@ if [ -z "$LATEST_URL" ]; then
     fi
 fi
 
-# 使用 GitHub 加速镜像提高下载速度
-PROXY_URL="https://gh-proxy.com/$LATEST_URL"
+# 检查 URL 是否已经包含镜像前缀，避免重复添加
+if echo "$LATEST_URL" | grep -q "gh-proxy.com"; then
+    echo "[*] 检测到已包含镜像地址: $LATEST_URL"
+    DOWNLOAD_URL="$LATEST_URL"
+    # 提取原始 GitHub 地址作为备用
+    ORIGINAL_URL=$(echo "$LATEST_URL" | sed 's|https://gh-proxy.com/||')
+else
+    echo "[*] 原始地址: $LATEST_URL"
+    # 使用 GitHub 加速镜像提高下载速度
+    DOWNLOAD_URL="https://gh-proxy.com/$LATEST_URL"
+    ORIGINAL_URL="$LATEST_URL"
+    echo "[*] 加速地址: $DOWNLOAD_URL"
+fi
 
-echo "[*] 原始地址: $LATEST_URL"
-echo "[*] 加速地址: $PROXY_URL"
 echo "[*] 下载中..."
 
-# 首先尝试使用加速镜像下载
-if ! curl -L -f -o /tmp/openclash.ipk "$PROXY_URL"; then
-    echo "[*] 镜像下载失败，尝试直接下载..."
-    # 如果镜像失败，尝试直接下载
-    if ! curl -L -f -o /tmp/openclash.ipk "$LATEST_URL"; then
+# 首先尝试使用主要下载地址
+if ! curl -L -f -o /tmp/openclash.ipk "$DOWNLOAD_URL"; then
+    echo "[*] 主要下载失败，尝试备用地址..."
+    # 如果主要地址失败，尝试备用地址
+    if ! curl -L -f -o /tmp/openclash.ipk "$ORIGINAL_URL"; then
         echo "[!] 下载失败，请检查网络连接或稍后重试"
         exit 1
     fi
