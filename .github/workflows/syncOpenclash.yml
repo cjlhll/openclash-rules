@@ -2,8 +2,8 @@ name: Sync OpenClash Releases
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # 每天 03:00 UTC 自动运行
-  workflow_dispatch:     # 手动触发
+    - cron: '0 3 * * *'  # 每天 UTC 03:00 运行
+  workflow_dispatch:     # 支持手动触发
 
 jobs:
   sync:
@@ -17,16 +17,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl jq
 
-      - name: Get latest OpenClash release
+      - name: Fetch latest OpenClash release
         run: |
           echo "Fetching latest release JSON..."
           RELEASE_JSON=$(curl -s -H "Accept: application/vnd.github+json" \
             -H "User-Agent: github-actions" \
             https://api.github.com/repos/vernesong/OpenClash/releases/latest)
 
+          # 保存 JSON 供调试
           echo "$RELEASE_JSON" > release.json
 
+          # 提取所有 assets 的下载 URL
           ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[]?.browser_download_url // empty')
+
           if [ -z "$ASSETS" ]; then
             echo "No assets found or API limit reached"
             exit 1
@@ -45,7 +48,7 @@ jobs:
             curl -L -o "openclash_assets/$FILE_NAME" "$URL"
           done < assets.txt
 
-      - name: Commit and push
+      - name: Commit and push changes
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
