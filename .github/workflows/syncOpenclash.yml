@@ -164,13 +164,18 @@ jobs:
           echo "✅ 发布创建成功，ID: $RELEASE_ID"
           echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
           
-          # 获取发布信息（只获取assets编译产物）
+          # 获取发布信息（包含assets和源代码链接）
           RELEASE_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/vernesong/OpenClash/releases/tags/${{ steps.get_release.outputs.tag_name }}")
           
           # 获取编译产物assets
           ASSETS=$(echo "$RELEASE_INFO" | jq -r '.assets[] | "\(.name)|\(.browser_download_url)"')
+          
+          # 获取源代码链接
+          ZIPBALL_URL=$(echo "$RELEASE_INFO" | jq -r '.zipball_url')
+          TARBALL_URL=$(echo "$RELEASE_INFO" | jq -r '.tarball_url')
+          TAG_NAME="${{ steps.get_release.outputs.tag_name }}"
           
           # 创建临时目录
           mkdir -p /tmp/openclash_assets
@@ -185,28 +190,39 @@ jobs:
               echo "⬇️  下载编译产物: $asset_name"
               wget -q "$download_url" -O "$asset_name" &
             done
-            
-            # 等待所有下载完成
-            wait
           else
             echo "⚠️  未找到编译产物"
-            exit 1
           fi
+          
+          # 下载源代码文件
+          echo "📄 下载源代码文件..."
+          if [ -n "$ZIPBALL_URL" ] && [ "$ZIPBALL_URL" != "null" ]; then
+            echo "⬇️  下载源代码 (zip): Source code.zip"
+            wget -q "$ZIPBALL_URL" -O "Source code.zip" &
+          fi
+          
+          if [ -n "$TARBALL_URL" ] && [ "$TARBALL_URL" != "null" ]; then
+            echo "⬇️  下载源代码 (tar.gz): Source code.tar.gz"
+            wget -q "$TARBALL_URL" -O "Source code.tar.gz" &
+          fi
+          
+          # 等待所有下载完成
+          wait
           
           # 统计下载的文件
           TOTAL_FILES=$(ls -1 | wc -l)
-          echo "📁 总共下载了 $TOTAL_FILES 个编译产物文件"
+          echo "📁 总共下载了 $TOTAL_FILES 个文件"
           
-          # 上传所有编译产物文件到新发布
+          # 上传所有文件到新发布
           UPLOAD_SUCCESS=0
           UPLOAD_FAILED=0
           
           for file in *; do
             if [ -f "$file" ]; then
-              echo "⬆️  上传编译产物: $file"
+              echo "⬆️  上传: $file"
               
-              # URL编码文件名，处理特殊字符
-              ENCODED_NAME=$(echo "$file" | sed 's/\+/%2B/g')
+              # URL编码文件名，处理空格和特殊字符
+              ENCODED_NAME=$(echo "$file" | sed 's/ /%20/g' | sed 's/\+/%2B/g')
               
               # 尝试上传文件，最多重试3次
               RETRY_COUNT=0
@@ -244,10 +260,10 @@ jobs:
             fi
           done
           
-          echo "📊 上传统计: 成功 $UPLOAD_SUCCESS 个编译产物，失败 $UPLOAD_FAILED 个"
+          echo "📊 上传统计: 成功 $UPLOAD_SUCCESS 个，失败 $UPLOAD_FAILED 个"
           
           if [ $UPLOAD_FAILED -gt 0 ]; then
-            echo "⚠️  部分编译产物上传失败，但发布已创建"
+            echo "⚠️  部分文件上传失败，但发布已创建"
             exit 0  # 不中断工作流，允许继续执行
           fi
           
@@ -267,21 +283,22 @@ jobs:
           echo "📊 === 执行摘要 ==="
           echo "🏷️  版本标签: ${{ steps.get_release.outputs.tag_name }}"
           echo "📅 发布时间: ${{ steps.get_release.outputs.published_at }}"
-          echo "📁 原始资源文件: ${{ steps.get_release.outputs.assets_count }} 个编译产物"
+          echo "📁 原始资源文件: ${{ steps.get_release.outputs.assets_count }} 个编译产物 + 2 个源代码文件"
           
           if [ "${{ steps.check_release.outputs.exists }}" = "true" ] && [ "${{ steps.check_release.outputs.force_update }}" = "false" ]; then
             echo "ℹ️  状态: 发布已存在，未进行更新"
             echo "💡 提示: 如需强制更新，请在手动触发时启用 force_update 选项"
           elif [ "${{ steps.check_release.outputs.force_update }}" = "true" ]; then
-            echo "🔄 状态: 强制更新完成 - 已同步所有编译产物"
+            echo "🔄 状态: 强制更新完成 - 已同步所有文件（编译产物 + 源代码）"
             echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
           else
-            echo "🆕 状态: 新发布创建完成 - 已同步所有编译产物"
+            echo "🆕 状态: 新发布创建完成 - 已同步所有文件（编译产物 + 源代码）"
             echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
           fi
           
           echo "📦 原始发布: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
           echo "📋 同步内容:"
           echo "  ✅ 编译产物 (.apk, .ipk 文件)"
-          echo "  📊 总计: ${{ steps.get_release.outputs.assets_count }} 个编译产物文件完整同步"
+          echo "  ✅ 源代码文件 (zip, tar.gz)"
+          echo "  📊 总计: 4 个文件完整同步"
 
