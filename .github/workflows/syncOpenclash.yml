@@ -15,11 +15,23 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       
+    - name: Install dependencies
+      run: |
+        # 确保jq已安装
+        sudo apt-get update
+        sudo apt-get install -y jq curl
+      
     - name: Get latest OpenClash release
       id: get_release
       run: |
-        # 使用GitHub API获取最新的release信息
-        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases/latest")
+        # 使用GitHub API获取最新的release信息（OpenClash只有pre-release版本）
+        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | jq '.[0]')
+        
+        # 检查API响应是否有效
+        if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
+          echo "Error: Failed to get release information"
+          exit 1
+        fi
         
         # 提取release信息
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
@@ -35,20 +47,33 @@ jobs:
         
     - name: Download release assets
       run: |
-        # 获取assets信息
-        ASSETS=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases/latest" | jq -r '.assets[]')
+        # 获取assets信息（使用第一个release而不是latest）
+        RELEASE_DATA=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | jq '.[0]')
+        
+        # 检查是否有assets
+        ASSETS_COUNT=$(echo "$RELEASE_DATA" | jq '.assets | length')
+        if [ "$ASSETS_COUNT" -eq 0 ]; then
+          echo "No assets found in the latest release"
+          exit 1
+        fi
+        
+        echo "Found $ASSETS_COUNT assets to download"
         
         # 创建下载目录
         mkdir -p downloads/openclash-${{ steps.get_release.outputs.tag_name }}
         cd downloads/openclash-${{ steps.get_release.outputs.tag_name }}
         
         # 下载所有assets文件
-        curl -s "https://api.github.com/repos/vernesong/OpenClash/releases/latest" | \
+        echo "$RELEASE_DATA" | \
         jq -r '.assets[] | "\(.name) \(.browser_download_url)"' | \
         while read name url; do
           echo "Downloading: $name"
           curl -L -o "$name" "$url"
-          echo "Downloaded: $name ($(ls -lh "$name" | awk '{print $5}'))"
+          if [ -f "$name" ]; then
+            echo "Downloaded: $name ($(ls -lh "$name" | awk '{print $5}'))"
+          else
+            echo "Failed to download: $name"
+          fi
         done
         
         # 显示下载的文件列表
