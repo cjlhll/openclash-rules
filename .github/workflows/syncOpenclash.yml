@@ -40,15 +40,20 @@ jobs:
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
         RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
         PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
-        RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
+        
+        # 处理release body，转义特殊字符和换行符
+        RELEASE_BODY_RAW=$(echo "$LATEST_RELEASE" | jq -r '.body')
+        # 使用base64编码来安全传递包含特殊字符的内容
+        RELEASE_BODY_ENCODED=$(echo "$RELEASE_BODY_RAW" | base64 -w 0)
         
         echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
         echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
-        echo "release_body=$RELEASE_BODY" >> $GITHUB_OUTPUT
+        echo "release_body_encoded=$RELEASE_BODY_ENCODED" >> $GITHUB_OUTPUT
         
         echo "Latest Release: $RELEASE_NAME ($TAG_NAME)"
         echo "Published at: $PUBLISHED_AT"
+        echo "Body length: ${#RELEASE_BODY_RAW} characters"
         
     - name: Check if release already exists
       id: check_release
@@ -79,18 +84,31 @@ jobs:
         
         echo "Found $(echo "$ASSETS" | jq 'length') assets to mirror"
         
-        # 创建新的release
-        RELEASE_DATA=$(cat <<EOF
-        {
-          "tag_name": "${{ steps.get_release.outputs.tag_name }}",
-          "target_commitish": "main",
-          "name": "OpenClash ${{ steps.get_release.outputs.tag_name }}",
-          "body": "Mirror of OpenClash release ${{ steps.get_release.outputs.tag_name }}\n\nOriginal release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}\n\n${{ steps.get_release.outputs.release_body }}",
-          "draft": false,
-          "prerelease": true
-        }
-        EOF
-        )
+        # 解码release body
+        RELEASE_BODY_DECODED=$(echo "${{ steps.get_release.outputs.release_body_encoded }}" | base64 -d)
+        
+        # 创建release描述，转义JSON中的特殊字符
+        RELEASE_DESCRIPTION="Mirror of OpenClash release ${{ steps.get_release.outputs.tag_name }}
+
+Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}
+
+---
+
+$RELEASE_BODY_DECODED"
+        
+        # 使用jq来正确处理JSON转义
+        RELEASE_DATA=$(jq -n \
+          --arg tag "${{ steps.get_release.outputs.tag_name }}" \
+          --arg name "OpenClash ${{ steps.get_release.outputs.tag_name }}" \
+          --arg body "$RELEASE_DESCRIPTION" \
+          '{
+            "tag_name": $tag,
+            "target_commitish": "main",
+            "name": $name,
+            "body": $body,
+            "draft": false,
+            "prerelease": true
+          }')
         
         # 创建release
         NEW_RELEASE=$(curl -s -X POST \
@@ -104,6 +122,7 @@ jobs:
         
         if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
           echo "Error: Failed to create release"
+          echo "Response:"
           echo "$NEW_RELEASE" | jq '.'
           exit 1
         fi
@@ -112,6 +131,9 @@ jobs:
         echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
         
         # 下载并上传每个asset
+        UPLOAD_SUCCESS=0
+        UPLOAD_FAILED=0
+        
         echo "$ASSETS" | jq -c '.[]' | while read -r asset; do
           ASSET_NAME=$(echo "$asset" | jq -r '.name')
           ASSET_URL=$(echo "$asset" | jq -r '.browser_download_url')
@@ -124,35 +146,47 @@ jobs:
           echo "Downloading $ASSET_URL to $TEMP_FILE"
           
           if curl -L -o "$TEMP_FILE" "$ASSET_URL"; then
-            echo "Successfully downloaded $ASSET_NAME"
-            
-            # 上传asset到新的release
-            echo "Uploading $ASSET_NAME to release..."
-            UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
-            
-            UPLOAD_RESPONSE=$(curl -s -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary "@$TEMP_FILE" \
-              "$UPLOAD_URL")
-            
-            UPLOAD_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.id')
-            
-            if [ "$UPLOAD_ID" != "null" ] && [ -n "$UPLOAD_ID" ]; then
-              echo "Successfully uploaded $ASSET_NAME (Upload ID: $UPLOAD_ID)"
+            # 验证下载的文件大小
+            ACTUAL_SIZE=$(stat -c%s "$TEMP_FILE" 2>/dev/null || echo "0")
+            if [ "$ACTUAL_SIZE" -eq "$ASSET_SIZE" ]; then
+              echo "✓ Successfully downloaded $ASSET_NAME ($ACTUAL_SIZE bytes)"
+              
+              # 上传asset到新的release
+              echo "Uploading $ASSET_NAME to release..."
+              UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$(echo "$ASSET_NAME" | sed 's/ /%20/g')"
+              
+              UPLOAD_RESPONSE=$(curl -s -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@$TEMP_FILE" \
+                "$UPLOAD_URL")
+              
+              UPLOAD_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.id')
+              
+              if [ "$UPLOAD_ID" != "null" ] && [ -n "$UPLOAD_ID" ]; then
+                echo "✓ Successfully uploaded $ASSET_NAME (Upload ID: $UPLOAD_ID)"
+                UPLOAD_SUCCESS=$((UPLOAD_SUCCESS + 1))
+              else
+                echo "✗ Error uploading $ASSET_NAME:"
+                echo "$UPLOAD_RESPONSE" | jq '.'
+                UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
+              fi
             else
-              echo "Error uploading $ASSET_NAME:"
-              echo "$UPLOAD_RESPONSE" | jq '.'
+              echo "✗ File size mismatch for $ASSET_NAME. Expected: $ASSET_SIZE, Actual: $ACTUAL_SIZE"
+              UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
             fi
             
             # 清理临时文件
             rm -f "$TEMP_FILE"
           else
-            echo "Error: Failed to download $ASSET_NAME from $ASSET_URL"
+            echo "✗ Error: Failed to download $ASSET_NAME from $ASSET_URL"
+            UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
           fi
         done
         
-        echo "Release creation and asset upload completed"
+        echo "Release creation completed"
+        echo "Assets uploaded successfully: $UPLOAD_SUCCESS"
+        echo "Assets failed to upload: $UPLOAD_FAILED"
         
     - name: Skip if release exists
       if: steps.check_release.outputs.exists == 'true'
@@ -163,10 +197,21 @@ jobs:
     - name: Summary
       run: |
         if [ "${{ steps.check_release.outputs.exists }}" = "true" ]; then
+          echo "📋 Release Summary"
+          echo "=================="
           echo "✓ Release ${{ steps.get_release.outputs.tag_name }} already exists in this repository"
-          echo "No action needed"
+          echo "📅 Published: ${{ steps.get_release.outputs.published_at }}"
+          echo "🔗 View release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          echo ""
+          echo "ℹ️  No action needed - release is up to date"
         else
-          echo "✓ Successfully mirrored OpenClash release ${{ steps.get_release.outputs.tag_name }}"
-          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
-          echo "Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          echo "📋 Release Summary"
+          echo "=================="
+          echo "✅ Successfully mirrored OpenClash release ${{ steps.get_release.outputs.tag_name }}"
+          echo "📅 Original published: ${{ steps.get_release.outputs.published_at }}"
+          echo "📦 Release body length: ${{ steps.get_release.outputs.body_length }} characters"
+          echo "🔗 Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          echo "🔗 Mirrored release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          echo ""
+          echo "🎉 Mirror operation completed successfully!"
         fi
