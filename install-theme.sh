@@ -1,5 +1,5 @@
 #!/bin/sh
-# 纯命令行选择安装 luci-theme
+# OpenWrt ash 兼容版本 - 纯命令行选择安装 luci-theme
 
 BASE_URL="https://dl.openwrt.ai/releases/24.10/packages/aarch64_cortex-a53/kiddin9"
 
@@ -11,12 +11,12 @@ if [ -z "$THEMES" ]; then
     exit 1
 fi
 
-# 转换为数组
+# 输出带编号的列表，存到临时文件
+TMPFILE=$(mktemp)
 i=1
-declare -a THEME_ARRAY
-for t in $THEMES; do
+echo "$THEMES" | while read t; do
     echo "$i) $t"
-    THEME_ARRAY[$i]=$t
+    echo "$i:$t" >> $TMPFILE
     i=$((i+1))
 done
 
@@ -24,7 +24,9 @@ done
 echo -n "请输入要安装的主题编号: "
 read CHOICE
 
-SELECTED=${THEME_ARRAY[$CHOICE]}
+# 从临时文件中获取对应包名
+SELECTED=$(grep "^$CHOICE:" $TMPFILE | cut -d: -f2)
+rm $TMPFILE
 
 if [ -z "$SELECTED" ]; then
     echo "无效选择，退出"
