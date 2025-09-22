@@ -1,54 +1,99 @@
-name: Sync OpenClash Releases
+name: Get OpenClash Latest Release Assets
 
 on:
+  # 手动触发
   workflow_dispatch:
+  # 定时触发 - 每天检查一次
+  schedule:
+    - cron: '0 8 * * *'  # 每天早上8点UTC时间运行
 
 jobs:
-  sync:
+  get-latest-release:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq
-
-      - name: Fetch latest release JSON with token
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 或自定义 PAT
-        run: |
-          echo "Fetching latest release JSON..."
-          RELEASE_JSON=$(curl -s -H "Authorization: token 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" \
-          https://api.github.com/repos/vernesong/OpenClash/releases/latest)
-
-          echo "$RELEASE_JSON" > release.json
-
-          ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[]?.browser_download_url // empty')
-
-          if [ -z "$ASSETS" ]; then
-            echo "No assets found or API limit reached"
-            exit 1
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Get latest OpenClash release
+      id: get_release
+      run: |
+        # 使用GitHub API获取最新的release信息
+        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases/latest")
+        
+        # 提取release信息
+        TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+        RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
+        PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
+        
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+        echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
+        
+        echo "Latest Release: $RELEASE_NAME ($TAG_NAME)"
+        echo "Published at: $PUBLISHED_AT"
+        
+    - name: Download release assets
+      run: |
+        # 获取assets信息
+        ASSETS=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases/latest" | jq -r '.assets[]')
+        
+        # 创建下载目录
+        mkdir -p downloads/openclash-${{ steps.get_release.outputs.tag_name }}
+        cd downloads/openclash-${{ steps.get_release.outputs.tag_name }}
+        
+        # 下载所有assets文件
+        curl -s "https://api.github.com/repos/vernesong/OpenClash/releases/latest" | \
+        jq -r '.assets[] | "\(.name) \(.browser_download_url)"' | \
+        while read name url; do
+          echo "Downloading: $name"
+          curl -L -o "$name" "$url"
+          echo "Downloaded: $name ($(ls -lh "$name" | awk '{print $5}'))"
+        done
+        
+        # 显示下载的文件列表
+        echo "Downloaded files:"
+        ls -la
+        
+    - name: Create release summary
+      run: |
+        # 创建下载摘要文件
+        SUMMARY_FILE="downloads/openclash-${{ steps.get_release.outputs.tag_name }}/DOWNLOAD_SUMMARY.md"
+        
+        cat > "$SUMMARY_FILE" << EOF
+        # OpenClash Release Download Summary
+        
+        **Release:** ${{ steps.get_release.outputs.release_name }}
+        **Tag:** ${{ steps.get_release.outputs.tag_name }}
+        **Published:** ${{ steps.get_release.outputs.published_at }}
+        **Download Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        
+        ## Downloaded Assets:
+        EOF
+        
+        cd downloads/openclash-${{ steps.get_release.outputs.tag_name }}
+        for file in *; do
+          if [ "$file" != "DOWNLOAD_SUMMARY.md" ]; then
+            SIZE=$(ls -lh "$file" | awk '{print $5}')
+            echo "- \`$file\` ($SIZE)" >> DOWNLOAD_SUMMARY.md
           fi
-
-          echo "$ASSETS" > assets.txt
-          echo "Found assets:"
-          cat assets.txt
-
-      - name: Download all assets
-        run: |
-          mkdir -p openclash_assets
-          while read URL; do
-            FILE_NAME=$(basename "$URL")
-            echo "Downloading $FILE_NAME ..."
-            curl -L -o "openclash_assets/$FILE_NAME" "$URL"
-          done < assets.txt
-
-      - name: Commit and push changes
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add openclash_assets/*
-          git commit -m "Sync OpenClash release $(date +%Y-%m-%d)" || echo "No changes"
-          git push
+        done
+        
+        echo "" >> DOWNLOAD_SUMMARY.md
+        echo "**Total Files:** $(ls -1 | grep -v DOWNLOAD_SUMMARY.md | wc -l)" >> DOWNLOAD_SUMMARY.md
+        
+        # 显示摘要
+        cat DOWNLOAD_SUMMARY.md
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: openclash-release-${{ steps.get_release.outputs.tag_name }}
+        path: downloads/
+        retention-days: 30
+        
+    - name: Check for new release (optional notification)
+      run: |
+        # 这里可以添加通知逻辑，比如发送到Slack、Discord等
+        echo "Release check completed for OpenClash ${{ steps.get_release.outputs.tag_name }}"
+        echo "You can download the artifacts from the Actions tab"
