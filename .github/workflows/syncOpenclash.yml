@@ -1,9 +1,7 @@
 name: Sync OpenClash Releases
 
 on:
-  schedule:
-    - cron: '0 3 * * *'  # 每天 UTC 03:00 运行
-  workflow_dispatch:     # 支持手动触发
+  workflow_dispatch:
 
 jobs:
   sync:
@@ -17,17 +15,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl jq
 
-      - name: Fetch latest OpenClash release
+      - name: Fetch latest release JSON with token
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 或自定义 PAT
         run: |
           echo "Fetching latest release JSON..."
           RELEASE_JSON=$(curl -s -H "Accept: application/vnd.github+json" \
             -H "User-Agent: github-actions" \
+            -H "Authorization: token $GH_TOKEN" \
             https://api.github.com/repos/vernesong/OpenClash/releases/latest)
 
-          # 保存 JSON 供调试
           echo "$RELEASE_JSON" > release.json
 
-          # 提取所有 assets 的下载 URL
           ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[]?.browser_download_url // empty')
 
           if [ -z "$ASSETS" ]; then
