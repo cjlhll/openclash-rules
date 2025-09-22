@@ -169,11 +169,12 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/vernesong/OpenClash/releases/tags/${{ steps.get_release.outputs.tag_name }}")
           
-          # 获取.ipk和.apk文件
+          # 获取所有.ipk和.apk文件
           ASSETS=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("\\.(ipk|apk)$")) | "\(.name)|\(.browser_download_url)"')
           
-          # 创建临时目录
+          # 创建临时目录和assets目录
           mkdir -p /tmp/openclash_assets
+          mkdir -p assets
           cd /tmp/openclash_assets
           
           # 下载.ipk和.apk文件
@@ -181,16 +182,40 @@ jobs:
             ASSET_COUNT=$(echo "$ASSETS" | wc -l)
             echo "📦 找到 $ASSET_COUNT 个.ipk/.apk文件"
             
+            # 并行下载所有文件
             echo "$ASSETS" | while IFS='|' read -r asset_name download_url; do
               echo "⬇️  下载: $asset_name"
-              wget -q "$download_url" -O "$asset_name" &
+              wget -q --timeout=30 --tries=3 "$download_url" -O "$asset_name" &
             done
             
             # 等待所有下载完成
             wait
             
-            # 重命名文件，去掉版本后缀
-            echo "🔄 重命名文件，去掉版本后缀..."
+            # 验证下载的文件
+            echo "🔍 验证下载的文件..."
+            for file in *.ipk *.apk; do
+              if [ -f "$file" ]; then
+                FILE_SIZE=$(stat -c%s "$file" 2>/dev/null || echo "0")
+                if [ "$FILE_SIZE" -gt 1000 ]; then
+                  echo "✅ $file (${FILE_SIZE} bytes)"
+                else
+                  echo "❌ $file 下载失败或文件损坏"
+                  exit 1
+                fi
+              fi
+            done
+            
+            # 复制原始文件到assets目录（保持原始文件名）
+            echo "📁 复制文件到assets目录..."
+            for file in *.ipk *.apk; do
+              if [ -f "$file" ]; then
+                cp "$file" "../assets/"
+                echo "📋 复制: $file -> assets/"
+              fi
+            done
+            
+            # 重命名文件用于release上传（去掉版本后缀）
+            echo "🔄 重命名文件用于release上传..."
             for file in *.ipk *.apk; do
               if [ -f "$file" ]; then
                 # 提取基础文件名（去掉版本号）
@@ -202,7 +227,7 @@ jobs:
                 
                 if [ "$file" != "$NEW_NAME" ]; then
                   echo "📝 重命名: $file -> $NEW_NAME"
-                  mv "$file" "$NEW_NAME"
+                  cp "$file" "$NEW_NAME"
                 else
                   echo "✅ 文件名已正确: $file"
                 fi
@@ -272,6 +297,21 @@ jobs:
           cd /
           rm -rf /tmp/openclash_assets
           
+          # 提交assets目录的更改到仓库
+          cd "$GITHUB_WORKSPACE"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # 检查是否有新文件需要提交
+          if [ -n "$(git status --porcelain assets/)" ]; then
+            git add assets/
+            git commit -m "Auto-update OpenClash assets to ${{ steps.get_release.outputs.tag_name }} - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            git push
+            echo "✅ Assets目录已更新并推送到仓库"
+          else
+            echo "ℹ️  Assets目录无变化，跳过提交"
+          fi
+          
           echo "🎉 发布创建完成！"
           
       - name: Skip if release exists
@@ -284,22 +324,24 @@ jobs:
           echo "📊 === 执行摘要 ==="
           echo "🏷️  版本标签: ${{ steps.get_release.outputs.tag_name }}"
           echo "📅 发布时间: ${{ steps.get_release.outputs.published_at }}"
-          echo "📁 原始资源文件: 2 个.ipk/.apk文件"
+          echo "📁 同步的资源文件: IPK和APK文件"
           
           if [ "${{ steps.check_release.outputs.exists }}" = "true" ] && [ "${{ steps.check_release.outputs.force_update }}" = "false" ]; then
             echo "ℹ️  状态: 发布已存在，未进行更新"
             echo "💡 提示: 如需强制更新，请在手动触发时启用 force_update 选项"
           elif [ "${{ steps.check_release.outputs.force_update }}" = "true" ]; then
-            echo "🔄 状态: 强制更新完成 - 已同步.ipk/.apk文件并重命名"
+            echo "🔄 状态: 强制更新完成 - 已同步所有.ipk/.apk文件"
             echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
           else
-            echo "🆕 状态: 新发布创建完成 - 已同步.ipk/.apk文件并重命名"
+            echo "🆕 状态: 新发布创建完成 - 已同步所有.ipk/.apk文件"
             echo "🔗 查看发布: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
           fi
           
           echo "📦 原始发布: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
           echo "📋 同步内容:"
-          echo "  ✅ luci-app-openclash.ipk (去掉版本后缀)"
-          echo "  ✅ luci-app-openclash.apk (去掉版本后缀)"
-          echo "  📊 总计: 2 个文件完整同步"
+          echo "  ✅ 所有.ipk文件（原始文件名保存在assets/目录）"
+          echo "  ✅ 所有.apk文件（原始文件名保存在assets/目录）"
+          echo "  ✅ luci-app-openclash.ipk (release中去掉版本后缀)"
+          echo "  ✅ luci-app-openclash.apk (release中去掉版本后缀)"
+          echo "  📊 完整同步所有编译产物文件"
 
