@@ -51,7 +51,7 @@ echo "[*] 最新版本地址: $LATEST_URL"
 echo "[*] 下载中..."
 
 # 下载文件，添加更多错误处理
-if ! curl -L -f -o /tmp/openclash.ipk "$LATEST_URL"; then
+if ! curl -L -f -o /tmp/openclash.ipk "https://gh-proxy.com/$LATEST_URL"; then
     echo "[!] 下载失败，请检查网络连接或稍后重试"
     exit 1
 fi
@@ -65,7 +65,11 @@ fi
 echo "[*] 下载完成，文件大小: $(du -h /tmp/openclash.ipk | cut -f1)"
 
 echo "[4/4] 安装 OpenClash..."
-if ! opkg install /tmp/openclash.ipk; then
+
+# 使用 --force-confold 参数避免配置文件冲突
+# --force-confold: 保留现有配置文件，不创建备份
+# --force-overwrite: 强制覆盖已存在的文件
+if ! opkg install /tmp/openclash.ipk --force-confold --force-confold; then
     echo "[!] 安装失败，可能的原因："
     echo "    1. IPK 文件损坏"
     echo "    2. 依赖包未正确安装"
