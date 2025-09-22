@@ -60,8 +60,8 @@ jobs:
         echo "Found $ASSETS_COUNT assets to download"
         
         # 创建下载目录
-        mkdir -p downloads/openclash-${{ steps.get_release.outputs.tag_name }}
-        cd downloads/openclash-${{ steps.get_release.outputs.tag_name }}
+        mkdir -p openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}
+        cd openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}
         
         # 下载所有assets文件
         echo "$RELEASE_DATA" | \
@@ -83,7 +83,7 @@ jobs:
     - name: Create release summary
       run: |
         # 创建下载摘要文件
-        SUMMARY_FILE="downloads/openclash-${{ steps.get_release.outputs.tag_name }}/DOWNLOAD_SUMMARY.md"
+        SUMMARY_FILE="openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}/DOWNLOAD_SUMMARY.md"
         
         cat > "$SUMMARY_FILE" << EOF
         # OpenClash Release Download Summary
@@ -96,7 +96,7 @@ jobs:
         ## Downloaded Assets:
         EOF
         
-        cd downloads/openclash-${{ steps.get_release.outputs.tag_name }}
+        cd openclash_assets/openclash-${{ steps.get_release.outputs.tag_name }}
         for file in *; do
           if [ "$file" != "DOWNLOAD_SUMMARY.md" ]; then
             SIZE=$(ls -lh "$file" | awk '{print $5}')
@@ -114,7 +114,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: openclash-release-${{ steps.get_release.outputs.tag_name }}
-        path: downloads/
+        path: openclash_assets/
         retention-days: 30
         
     - name: Check for new release (optional notification)
