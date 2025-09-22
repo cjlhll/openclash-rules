@@ -2,7 +2,7 @@
 
 ### release安装方式
 ```shell
-curl -s -L https://github.boki.moe/https://github.com/nikkinikki-org/OpenWrt-nikki/raw/refs/heads/main/install.sh | ash
+curl -s -L https://gh-proxy.com/https://github.com/nikkinikki-org/OpenWrt-nikki/raw/refs/heads/main/install.sh | ash
 ```
 ### feed源方式
 ```
@@ -11,9 +11,9 @@ wget -O - https://gh-proxy.com/https://github.com/nikkinikki-org/OpenWrt-nikki/r
 opkg install luci-i18n-nikki-zh-cn
 ```
 
-### 一键添加kiddin9源
+### 安装必要插件
 ```
-wget -O - https://gh-proxy.com/https://raw.githubusercontent.com/cjlhll/openclash-rules/main/add-kiddin9-source.sh | ash
+opkg install luci-app-wol luci-i18n-base-zh-cn luci-i18n-package-manager-zh-cn
 ```
 
 ### 一键安装openclash的脚本
