@@ -169,25 +169,48 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/vernesong/OpenClash/releases/tags/${{ steps.get_release.outputs.tag_name }}")
           
-          # 获取.ipk和.apk文件
+          # 获取所有assets文件（包括.ipk和.apk文件）
           ASSETS=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("\\.(ipk|apk)$")) | "\(.name)|\(.browser_download_url)"')
+          
+          echo "🔍 检查可用的assets文件:"
+          echo "$RELEASE_INFO" | jq -r '.assets[].name'
+          
+          echo "📦 过滤出的.ipk/.apk文件:"
+          echo "$ASSETS"
           
           # 创建临时目录
           mkdir -p /tmp/openclash_assets
           cd /tmp/openclash_assets
           
           # 下载.ipk和.apk文件
-          if [ -n "$ASSETS" ] && [ "$ASSETS" != "null" ]; then
+          if [ -n "$ASSETS" ] && [ "$ASSETS" != "null" ] && [ "$ASSETS" != "" ]; then
             ASSET_COUNT=$(echo "$ASSETS" | wc -l)
             echo "📦 找到 $ASSET_COUNT 个.ipk/.apk文件"
             
-            echo "$ASSETS" | while IFS='|' read -r asset_name download_url; do
-              echo "⬇️  下载: $asset_name"
-              wget -q "$download_url" -O "$asset_name" &
-            done
+            # 逐个下载文件，避免shell数组问题
+            while IFS='|' read -r asset_name download_url; do
+              if [ -n "$asset_name" ] && [ -n "$download_url" ]; then
+                echo "⬇️  开始下载: $asset_name"
+                echo "🔗 下载链接: $download_url"
+                
+                # 使用curl同步下载，提供更好的错误信息
+                if curl -L -f -o "$asset_name" "$download_url"; then
+                  echo "✅ 下载成功: $asset_name"
+                  # 验证文件是否存在且非空
+                  if [ -f "$asset_name" ] && [ -s "$asset_name" ]; then
+                    echo "📁 文件大小: $(du -h "$asset_name" | cut -f1)"
+                  else
+                    echo "⚠️  文件下载异常: $asset_name"
+                  fi
+                else
+                  echo "❌ 下载失败: $asset_name"
+                fi
+              fi
+            done <<< "$ASSETS"
             
-            # 等待所有下载完成
-            wait
+            # 列出下载的文件
+            echo "📁 下载完成的文件列表:"
+            ls -la
             
             # 重命名文件，去掉版本后缀
             echo "🔄 重命名文件，去掉版本后缀..."
@@ -208,6 +231,10 @@ jobs:
                 fi
               fi
             done
+            
+            # 验证重命名后的文件
+            echo "📁 重命名后的文件列表:"
+            ls -la
           else
             echo "⚠️  未找到.ipk/.apk文件"
             exit 1
@@ -284,7 +311,7 @@ jobs:
           echo "📊 === 执行摘要 ==="
           echo "🏷️  版本标签: ${{ steps.get_release.outputs.tag_name }}"
           echo "📅 发布时间: ${{ steps.get_release.outputs.published_at }}"
-          echo "📁 原始资源文件: 2 个.ipk/.apk文件"
+          echo "📁 原始资源文件: ipk和apk安装包文件"
           
           if [ "${{ steps.check_release.outputs.exists }}" = "true" ] && [ "${{ steps.check_release.outputs.force_update }}" = "false" ]; then
             echo "ℹ️  状态: 发布已存在，未进行更新"
@@ -299,7 +326,7 @@ jobs:
           
           echo "📦 原始发布: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
           echo "📋 同步内容:"
-          echo "  ✅ luci-app-openclash.ipk (去掉版本后缀)"
-          echo "  ✅ luci-app-openclash.apk (去掉版本后缀)"
-          echo "  📊 总计: 2 个文件完整同步"
+          echo "  ✅ luci-app-openclash.ipk (OpenWrt安装包，去掉版本后缀)"
+          echo "  ✅ luci-app-openclash.apk (APK安装包，去掉版本后缀)"
+          echo "  📊 总计: ipk和apk文件完整同步"
 
