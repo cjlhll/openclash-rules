@@ -1,4 +1,4 @@
-name: Get OpenClash Latest Release Assets
+name: Mirror OpenClash Release to Repository
 
 on:
   # 手动触发
@@ -8,8 +8,11 @@ on:
     - cron: '0 8 * * *'  # 每天早上8点UTC时间运行
 
 jobs:
-  get-latest-release:
+  mirror-openclash-release:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # 需要写权限来创建release
     
     steps:
     - name: Checkout repository
@@ -37,144 +40,133 @@ jobs:
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
         RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
         PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
+        RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
         
         echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
         echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
+        echo "release_body=$RELEASE_BODY" >> $GITHUB_OUTPUT
         
         echo "Latest Release: $RELEASE_NAME ($TAG_NAME)"
         echo "Published at: $PUBLISHED_AT"
         
-    - name: Download release assets
+    - name: Check if release already exists
+      id: check_release
       run: |
-        # 获取assets信息（使用第一个release而不是latest）
-        RELEASE_DATA=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | jq '.[0]')
+        # 检查当前仓库是否已经有相同tag的release
+        EXISTING_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_release.outputs.tag_name }}" | jq -r '.tag_name')
+        
+        if [ "$EXISTING_RELEASE" = "${{ steps.get_release.outputs.tag_name }}" ]; then
+          echo "Release ${{ steps.get_release.outputs.tag_name }} already exists in this repository"
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "Release ${{ steps.get_release.outputs.tag_name }} does not exist, will create new release"
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create new release with assets
+      if: steps.check_release.outputs.exists == 'false'
+      run: |
+        # 获取OpenClash release的所有assets
+        ASSETS=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | jq '.[0].assets')
         
         # 检查是否有assets
-        ASSETS_COUNT=$(echo "$RELEASE_DATA" | jq '.assets | length')
-        if [ "$ASSETS_COUNT" -eq 0 ]; then
-          echo "No assets found in the latest release"
+        if [ "$ASSETS" = "null" ] || [ "$ASSETS" = "[]" ]; then
+          echo "No assets found in the latest OpenClash release"
           exit 1
         fi
         
-        echo "Found $ASSETS_COUNT assets to download"
+        echo "Found $(echo "$ASSETS" | jq 'length') assets to mirror"
         
-        # 创建下载目录（使用最短路径避免Windows路径长度限制）
-        mkdir -p assets
-        cd assets
-        
-        # 初始化下载统计
-        DOWNLOAD_SUCCESS=0
-        DOWNLOAD_FAILED=0
-        
-        # 下载所有assets文件
-        echo "$RELEASE_DATA" | \
-        jq -r '.assets[] | "\(.name) \(.browser_download_url)"' | \
-        while read name url; do
-          echo "Downloading: $name"
-          if curl -L -o "$name" "$url"; then
-            if [ -f "$name" ] && [ -s "$name" ]; then
-              echo "✓ Downloaded: $name ($(ls -lh "$name" | awk '{print $5}'))"
-              DOWNLOAD_SUCCESS=$((DOWNLOAD_SUCCESS + 1))
-            else
-              echo "✗ Failed to download: $name (file is empty or missing)"
-              DOWNLOAD_FAILED=$((DOWNLOAD_FAILED + 1))
-            fi
-          else
-            echo "✗ Failed to download: $name (curl error)"
-            DOWNLOAD_FAILED=$((DOWNLOAD_FAILED + 1))
-          fi
-        done
-        
-        # 显示下载的文件列表
-        echo "Downloaded files:"
-        ls -la
-        
-        # 检查下载结果
-        TOTAL_FILES=$(ls -1 | grep -v DOWNLOAD_SUMMARY.md | wc -l)
-        echo "Download Summary: $TOTAL_FILES files downloaded"
-        
-        if [ "$TOTAL_FILES" -eq 0 ]; then
-          echo "Error: No files were successfully downloaded"
-          exit 1
-        fi
-        
-    - name: Create release summary
-      run: |
-        # 创建下载摘要文件
-        SUMMARY_FILE="assets/DOWNLOAD_SUMMARY.md"
-        
-        cat > "$SUMMARY_FILE" << EOF
-        # OpenClash Release Download Summary
-        
-        **Release:** ${{ steps.get_release.outputs.release_name }}
-        **Tag:** ${{ steps.get_release.outputs.tag_name }}
-        **Published:** ${{ steps.get_release.outputs.published_at }}
-        **Download Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-        
-        ## Downloaded Assets:
+        # 创建新的release
+        RELEASE_DATA=$(cat <<EOF
+        {
+          "tag_name": "${{ steps.get_release.outputs.tag_name }}",
+          "target_commitish": "main",
+          "name": "OpenClash ${{ steps.get_release.outputs.tag_name }}",
+          "body": "Mirror of OpenClash release ${{ steps.get_release.outputs.tag_name }}\n\nOriginal release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}\n\n${{ steps.get_release.outputs.release_body }}",
+          "draft": false,
+          "prerelease": true
+        }
         EOF
+        )
         
-        cd assets
-        for file in *; do
-          if [ "$file" != "DOWNLOAD_SUMMARY.md" ]; then
-            SIZE=$(ls -lh "$file" | awk '{print $5}')
-            echo "- \`$file\` ($SIZE)" >> DOWNLOAD_SUMMARY.md
+        # 创建release
+        NEW_RELEASE=$(curl -s -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/releases" \
+          -d "$RELEASE_DATA")
+        
+        # 获取新创建的release ID
+        RELEASE_ID=$(echo "$NEW_RELEASE" | jq -r '.id')
+        
+        if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+          echo "Error: Failed to create release"
+          echo "$NEW_RELEASE" | jq '.'
+          exit 1
+        fi
+        
+        echo "Created release with ID: $RELEASE_ID"
+        echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+        
+        # 下载并上传每个asset
+        echo "$ASSETS" | jq -c '.[]' | while read -r asset; do
+          ASSET_NAME=$(echo "$asset" | jq -r '.name')
+          ASSET_URL=$(echo "$asset" | jq -r '.browser_download_url')
+          ASSET_SIZE=$(echo "$asset" | jq -r '.size')
+          
+          echo "Processing asset: $ASSET_NAME (Size: $ASSET_SIZE bytes)"
+          
+          # 下载asset到临时文件
+          TEMP_FILE="/tmp/$ASSET_NAME"
+          echo "Downloading $ASSET_URL to $TEMP_FILE"
+          
+          if curl -L -o "$TEMP_FILE" "$ASSET_URL"; then
+            echo "Successfully downloaded $ASSET_NAME"
+            
+            # 上传asset到新的release
+            echo "Uploading $ASSET_NAME to release..."
+            UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
+            
+            UPLOAD_RESPONSE=$(curl -s -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$TEMP_FILE" \
+              "$UPLOAD_URL")
+            
+            UPLOAD_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.id')
+            
+            if [ "$UPLOAD_ID" != "null" ] && [ -n "$UPLOAD_ID" ]; then
+              echo "Successfully uploaded $ASSET_NAME (Upload ID: $UPLOAD_ID)"
+            else
+              echo "Error uploading $ASSET_NAME:"
+              echo "$UPLOAD_RESPONSE" | jq '.'
+            fi
+            
+            # 清理临时文件
+            rm -f "$TEMP_FILE"
+          else
+            echo "Error: Failed to download $ASSET_NAME from $ASSET_URL"
           fi
         done
         
-        echo "" >> DOWNLOAD_SUMMARY.md
-        echo "**Total Files:** $(ls -1 | grep -v DOWNLOAD_SUMMARY.md | wc -l)" >> DOWNLOAD_SUMMARY.md
+        echo "Release creation and asset upload completed"
         
-        # 显示摘要
-        cat DOWNLOAD_SUMMARY.md
-        
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: openclash-release-${{ steps.get_release.outputs.tag_name }}
-        path: assets/
-        retention-days: 30
-        
-    - name: Commit and push changes
+    - name: Skip if release exists
+      if: steps.check_release.outputs.exists == 'true'
       run: |
-        # 配置git用户信息
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        echo "Release ${{ steps.get_release.outputs.tag_name }} already exists in this repository"
+        echo "Skipping release creation"
         
-        # 检查是否有新文件或更改
-        echo "Checking for changes in the repository..."
-        git status --porcelain
-        
-        if [ -n "$(git status --porcelain)" ]; then
-          echo "Changes detected, committing files..."
-          
-          # 添加所有更改的文件
-          git add assets/
-          
-          # 显示将要提交的文件
-          echo "Files to be committed:"
-          git diff --cached --name-only
-          
-          # 提交更改
-          COMMIT_MSG="Auto-update OpenClash assets to ${{ steps.get_release.outputs.tag_name }} - $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
-          echo "Committing with message: $COMMIT_MSG"
-          git commit -m "$COMMIT_MSG"
-          
-          # 推送到仓库
-          echo "Pushing changes to repository..."
-          if git push; then
-            echo "✓ Successfully committed and pushed OpenClash assets"
-          else
-            echo "✗ Failed to push changes to repository"
-            exit 1
-          fi
+    - name: Summary
+      run: |
+        if [ "${{ steps.check_release.outputs.exists }}" = "true" ]; then
+          echo "✓ Release ${{ steps.get_release.outputs.tag_name }} already exists in this repository"
+          echo "No action needed"
         else
-          echo "No changes to commit"
+          echo "✓ Successfully mirrored OpenClash release ${{ steps.get_release.outputs.tag_name }}"
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}"
+          echo "Original release: https://github.com/vernesong/OpenClash/releases/tag/${{ steps.get_release.outputs.tag_name }}"
         fi
-        
-    - name: Check for new release (optional notification)
-      run: |
-        # 这里可以添加通知逻辑，比如发送到Slack、Discord等
-        echo "Release check completed for OpenClash ${{ steps.get_release.outputs.tag_name }}"
-        echo "Files have been committed to the repository in assets/ directory"
