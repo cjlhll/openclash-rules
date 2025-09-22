@@ -27,8 +27,9 @@ jobs:
     - name: Get latest OpenClash release
       id: get_release
       run: |
-        # 使用GitHub API获取最新的“正式”release（排除 pre-release）
-        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=100" | jq '[.[] | select(.prerelease == false)] | .[0]')
+        # 使用GitHub API获取最新的release信息（包括pre-release版本）
+        # 获取所有releases，包括pre-release，然后选择最新的一个
+        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases?per_page=1" | jq '.[0]')
         
         # 检查API响应是否有效
         if [ "$LATEST_RELEASE" = "null" ] || [ -z "$LATEST_RELEASE" ]; then
@@ -44,7 +45,6 @@ jobs:
         TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
         RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
         PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
-        ASSETS_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets_url')
         
         # 处理release body，转义特殊字符和换行符
         RELEASE_BODY_RAW=$(echo "$LATEST_RELEASE" | jq -r '.body')
@@ -55,12 +55,10 @@ jobs:
         echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
         echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
         echo "release_body_encoded=$RELEASE_BODY_ENCODED" >> $GITHUB_OUTPUT
-        echo "assets_url=$ASSETS_URL" >> $GITHUB_OUTPUT
         
         echo "Latest Release: $RELEASE_NAME ($TAG_NAME)"
         echo "Published at: $PUBLISHED_AT"
         echo "Body length: ${#RELEASE_BODY_RAW} characters"
-        echo "body_length=${#RELEASE_BODY_RAW}" >> $GITHUB_OUTPUT
         
     - name: Check if release already exists
       id: check_release
@@ -80,11 +78,11 @@ jobs:
     - name: Create new release with assets
       if: steps.check_release.outputs.exists == 'false'
       run: |
-        # 获取OpenClash release的所有assets（来自选定的稳定版 release）
-        ASSETS=$(curl -s "${{ steps.get_release.outputs.assets_url }}")
+        # 获取OpenClash release的所有assets
+        ASSETS=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | jq '.[0].assets')
         
         # 检查是否有assets
-        if [ -z "$ASSETS" ] || [ "$ASSETS" = "null" ] || [ "$ASSETS" = "[]" ]; then
+        if [ "$ASSETS" = "null" ] || [ "$ASSETS" = "[]" ]; then
           echo "No assets found in the latest OpenClash release"
           exit 1
         fi
@@ -148,6 +146,22 @@ jobs:
           
           echo "Processing asset: $ASSET_NAME (Size: $ASSET_SIZE bytes)"
           
+          # 处理文件名，去除版本号
+          RENAMED_ASSET=""
+          if [[ "$ASSET_NAME" =~ ^luci-app-openclash.*\.(ipk|apk)$ ]]; then
+            # 对于 .ipk 文件：luci-app-openclash_0.47.006_all.ipk -> luci-app-openclash.ipk
+            # 对于 .apk 文件：luci-app-openclash-0.47.006.apk -> luci-app-openclash.apk
+            if [[ "$ASSET_NAME" == *.ipk ]]; then
+              RENAMED_ASSET="luci-app-openclash.ipk"
+            elif [[ "$ASSET_NAME" == *.apk ]]; then
+              RENAMED_ASSET="luci-app-openclash.apk"
+            fi
+            echo "Renaming: $ASSET_NAME -> $RENAMED_ASSET"
+          else
+            RENAMED_ASSET="$ASSET_NAME"
+            echo "Keeping original name: $ASSET_NAME"
+          fi
+          
           # 下载asset到临时文件
           TEMP_FILE="/tmp/$ASSET_NAME"
           echo "Downloading $ASSET_URL to $TEMP_FILE"
@@ -159,8 +173,8 @@ jobs:
               echo "✓ Successfully downloaded $ASSET_NAME ($ACTUAL_SIZE bytes)"
               
               # 上传asset到新的release
-              echo "Uploading $ASSET_NAME to release..."
-              UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$(echo "$ASSET_NAME" | sed 's/ /%20/g')"
+              echo "Uploading $RENAMED_ASSET to release..."
+              UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$(echo "$RENAMED_ASSET" | sed 's/ /%20/g')"
               
               UPLOAD_RESPONSE=$(curl -s -X POST \
                 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -171,10 +185,10 @@ jobs:
               UPLOAD_ID=$(echo "$UPLOAD_RESPONSE" | jq -r '.id')
               
               if [ "$UPLOAD_ID" != "null" ] && [ -n "$UPLOAD_ID" ]; then
-                echo "✓ Successfully uploaded $ASSET_NAME (Upload ID: $UPLOAD_ID)"
+                echo "✓ Successfully uploaded $RENAMED_ASSET (Upload ID: $UPLOAD_ID)"
                 UPLOAD_SUCCESS=$((UPLOAD_SUCCESS + 1))
               else
-                echo "✗ Error uploading $ASSET_NAME:"
+                echo "✗ Error uploading $RENAMED_ASSET:"
                 echo "$UPLOAD_RESPONSE" | jq '.'
                 UPLOAD_FAILED=$((UPLOAD_FAILED + 1))
               fi
