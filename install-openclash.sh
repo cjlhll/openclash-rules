@@ -47,13 +47,21 @@ if [ -z "$LATEST_URL" ]; then
     fi
 fi
 
-echo "[*] 最新版本地址: $LATEST_URL"
+# 使用 GitHub 加速镜像提高下载速度
+PROXY_URL="https://gh-proxy.com/$LATEST_URL"
+
+echo "[*] 原始地址: $LATEST_URL"
+echo "[*] 加速地址: $PROXY_URL"
 echo "[*] 下载中..."
 
-# 下载文件，添加更多错误处理
-if ! curl -L -f -o /tmp/openclash.ipk "https://gh-proxy.com/$LATEST_URL"; then
-    echo "[!] 下载失败，请检查网络连接或稍后重试"
-    exit 1
+# 首先尝试使用加速镜像下载
+if ! curl -L -f -o /tmp/openclash.ipk "$PROXY_URL"; then
+    echo "[*] 镜像下载失败，尝试直接下载..."
+    # 如果镜像失败，尝试直接下载
+    if ! curl -L -f -o /tmp/openclash.ipk "$LATEST_URL"; then
+        echo "[!] 下载失败，请检查网络连接或稍后重试"
+        exit 1
+    fi
 fi
 
 # 验证下载的文件
@@ -69,7 +77,7 @@ echo "[4/4] 安装 OpenClash..."
 # 使用 --force-confold 参数避免配置文件冲突
 # --force-confold: 保留现有配置文件，不创建备份
 # --force-overwrite: 强制覆盖已存在的文件
-if ! opkg install /tmp/openclash.ipk --force-confold --force-confold; then
+if ! opkg install /tmp/openclash.ipk --force-confold --force-overwrite; then
     echo "[!] 安装失败，可能的原因："
     echo "    1. IPK 文件损坏"
     echo "    2. 依赖包未正确安装"
@@ -83,3 +91,4 @@ rm -f /tmp/openclash.ipk
 echo "[✔] OpenClash 安装完成！"
 echo "[*] 请在 LuCI 界面中访问 服务 -> OpenClash 来配置使用。"
 echo "[*] 源仓库: https://github.com/cjlhll/openclash-rules"
+echo "[*] 加速镜像: https://gh-proxy.com/ (提高下载速度)"
