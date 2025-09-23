@@ -337,25 +337,79 @@ done
 # 最后安装 LuCI 相关包
 if [ -n "$LUCI_IPKS" ]; then
     echo "[*] 第二阶段: 安装 LuCI 相关包..."
-    echo "[*] LuCI 包列表："
-    for ipk in $LUCI_IPKS; do
-        echo "    - $(basename "$ipk")"
-    done
+    
+    # 显示系统架构信息
+    SYSTEM_ARCH=$(opkg print-architecture 2>/dev/null | head -1 | awk '{print $2}' || echo "unknown")
+    echo "[*] 系统架构: $SYSTEM_ARCH"
+    
+    # 分离 luci-app 和 luci-i18n 包，确保正确的安装顺序
+    LUCI_APP_IPKS=""
+    LUCI_I18N_IPKS=""
+    
     for ipk in $LUCI_IPKS; do
         ipk_name=$(basename "$ipk")
-        echo "[*] 安装 $ipk_name..."
-        
-        if opkg install "$ipk" --force-overwrite --force-maintainer 2>/dev/null; then
-            echo "[✓] $ipk_name 安装成功"
-        else
-            echo "[*] $ipk_name 安装时有警告，尝试强制安装..."
-            if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends; then
-                echo "[✓] $ipk_name 强制安装成功"
-            else
-                echo "[!] $ipk_name 安装失败，但核心功能应该可用..."
-            fi
+        if echo "$ipk_name" | grep -q "luci-app-"; then
+            LUCI_APP_IPKS="$LUCI_APP_IPKS $ipk"
+        elif echo "$ipk_name" | grep -q "luci-i18n-"; then
+            LUCI_I18N_IPKS="$LUCI_I18N_IPKS $ipk"
         fi
     done
+    
+    # 首先安装 luci-app 包
+    if [ -n "$LUCI_APP_IPKS" ]; then
+        echo "[*] 安装 LuCI 应用包..."
+        for ipk in $LUCI_APP_IPKS; do
+            ipk_name=$(basename "$ipk")
+            echo "[*] 安装 $ipk_name..."
+            
+            # 首先尝试标准安装
+            if opkg install "$ipk" --force-overwrite --force-maintainer 2>/dev/null; then
+                echo "[✓] $ipk_name 安装成功"
+            else
+                echo "[*] $ipk_name 安装时有警告，尝试强制安装..."
+                # 尝试强制依赖安装
+                if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends 2>/dev/null; then
+                    echo "[✓] $ipk_name 强制安装成功"
+                else
+                    echo "[*] 强制依赖安装失败，尝试忽略架构检查..."
+                    # 最后尝试忽略架构检查
+                    if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends --force-architecture; then
+                        echo "[✓] $ipk_name 忽略架构检查安装成功"
+                    else
+                        echo "[!] $ipk_name 所有安装方式都失败，但继续..."
+                    fi
+                fi
+            fi
+        done
+    fi
+    
+    # 然后安装 luci-i18n 包
+    if [ -n "$LUCI_I18N_IPKS" ]; then
+        echo "[*] 安装 LuCI 语言包..."
+        for ipk in $LUCI_I18N_IPKS; do
+            ipk_name=$(basename "$ipk")
+            echo "[*] 安装 $ipk_name..."
+            
+            # 首先尝试标准安装
+            if opkg install "$ipk" --force-overwrite --force-maintainer 2>/dev/null; then
+                echo "[✓] $ipk_name 安装成功"
+            else
+                echo "[*] $ipk_name 安装时有警告，尝试强制安装..."
+                # 尝试强制依赖安装
+                if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends 2>/dev/null; then
+                    echo "[✓] $ipk_name 强制安装成功"
+                else
+                    echo "[*] 强制依赖安装失败，尝试忽略架构检查..."
+                    # 最后尝试忽略架构检查
+                    if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends --force-architecture; then
+                        echo "[✓] $ipk_name 忽略架构检查安装成功"
+                    else
+                        echo "[!] $ipk_name 所有安装方式都失败，语言包非必需，继续..."
+                    fi
+                fi
+            fi
+        done
+    fi
 fi
 
 # 最终清理配置文件备份
