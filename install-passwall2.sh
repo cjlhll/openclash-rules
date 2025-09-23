@@ -265,30 +265,98 @@ done
 
 # 安装其他依赖
 echo "[*] 安装其他依赖包..."
-DEPS="curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra kmod-tun unzip luci-compat"
+DEPS="curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra kmod-tun unzip luci-compat tcping"
 opkg install $DEPS --force-overwrite --force-maintainer 2>/dev/null || {
     echo "[*] 部分依赖可能已存在，继续..."
 }
 
-# 安装所有 Passwall2 相关的 ipk 文件
+# 安装 Passwall2 IPK 文件
 echo "[*] 安装 Passwall2 IPK 文件..."
 
-# 按照依赖顺序安装
-for ipk in $(echo "$IPK_FILES" | sort); do
+# 分离 LuCI 相关文件和核心包文件
+LUCI_IPKS=""
+CORE_IPKS=""
+
+for ipk in $IPK_FILES; do
     ipk_name=$(basename "$ipk")
-    echo "[*] 安装 $ipk_name..."
-    
-    if opkg install "$ipk" --force-overwrite --force-maintainer 2>/dev/null; then
-        echo "[✓] $ipk_name 安装成功"
+    if echo "$ipk_name" | grep -q "^luci-"; then
+        LUCI_IPKS="$LUCI_IPKS $ipk"
     else
-        echo "[*] $ipk_name 安装时有警告，尝试强制安装..."
-        if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends; then
-            echo "[✓] $ipk_name 强制安装成功"
-        else
-            echo "[!] $ipk_name 安装失败，继续安装其他文件..."
-        fi
+        CORE_IPKS="$CORE_IPKS $ipk"
     fi
 done
+
+# 首先安装核心包（除了 LuCI 相关的）
+if [ -n "$CORE_IPKS" ]; then
+    echo "[*] 第一阶段: 安装核心包..."
+    echo "[*] 核心包列表："
+    for ipk in $CORE_IPKS; do
+        echo "    - $(basename "$ipk")"
+    done
+    for ipk in $CORE_IPKS; do
+        ipk_name=$(basename "$ipk")
+        echo "[*] 安装 $ipk_name..."
+        
+        if opkg install "$ipk" --force-overwrite --force-maintainer 2>/dev/null; then
+            echo "[✓] $ipk_name 安装成功"
+        else
+            echo "[*] $ipk_name 安装时有警告，尝试强制安装..."
+            if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends; then
+                echo "[✓] $ipk_name 强制安装成功"
+            else
+                echo "[!] $ipk_name 安装失败，继续安装其他文件..."
+            fi
+        fi
+    done
+fi
+
+# 安装缺失的依赖包
+echo "[*] 检查并安装缺失的依赖包..."
+MISSING_DEPS="tcping"
+for dep in $MISSING_DEPS; do
+    if ! opkg list-installed | grep -q "^$dep "; then
+        echo "[*] 安装缺失依赖: $dep"
+        opkg install "$dep" --force-overwrite --force-maintainer 2>/dev/null || {
+            echo "[!] 无法从软件源安装 $dep，尝试检查是否已在下载的包中..."
+            # 检查是否在下载的 IPK 文件中有这个依赖
+            DEP_IPK=$(find . -name "*$dep*.ipk" -type f 2>/dev/null | head -1)
+            if [ -n "$DEP_IPK" ]; then
+                echo "[*] 找到依赖包: $(basename "$DEP_IPK")"
+                opkg install "$DEP_IPK" --force-overwrite --force-maintainer 2>/dev/null || {
+                    echo "[!] 安装 $dep 失败，但继续..."
+                }
+            else
+                echo "[!] 未找到 $dep 依赖包，但继续安装..."
+            fi
+        }
+    else
+        echo "[✓] $dep 已安装"
+    fi
+done
+
+# 最后安装 LuCI 相关包
+if [ -n "$LUCI_IPKS" ]; then
+    echo "[*] 第二阶段: 安装 LuCI 相关包..."
+    echo "[*] LuCI 包列表："
+    for ipk in $LUCI_IPKS; do
+        echo "    - $(basename "$ipk")"
+    done
+    for ipk in $LUCI_IPKS; do
+        ipk_name=$(basename "$ipk")
+        echo "[*] 安装 $ipk_name..."
+        
+        if opkg install "$ipk" --force-overwrite --force-maintainer 2>/dev/null; then
+            echo "[✓] $ipk_name 安装成功"
+        else
+            echo "[*] $ipk_name 安装时有警告，尝试强制安装..."
+            if opkg install "$ipk" --force-overwrite --force-maintainer --force-depends; then
+                echo "[✓] $ipk_name 强制安装成功"
+            else
+                echo "[!] $ipk_name 安装失败，但核心功能应该可用..."
+            fi
+        fi
+    done
+fi
 
 # 最终清理配置文件备份
 echo "[*] 清理所有配置文件备份..."
@@ -312,6 +380,7 @@ echo "✓ 架构: aarch64_generic"
 echo "✓ 访问方式: LuCI 界面 -> 服务 -> PassWall 2"
 echo "✓ 配置文件冲突已自动处理"
 echo "✓ dnsmasq-full 已安装并配置"
+echo "✓ 核心包和 LuCI 包已分阶段安装"
 echo ""
 echo "重要提醒："
 echo "- 建议重启路由器以确保所有服务正常运行"
