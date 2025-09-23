@@ -286,22 +286,29 @@ fi
 # 安全安装 OpenClash IPK - 避免覆盖系统组件
 echo "[*] 安全安装 OpenClash..."
 
-# 检查 OpenClash IPK 的依赖
-echo "[*] 检查 OpenClash 依赖..."
-OPENCLASH_DEPS_CHECK=$(opkg depends /tmp/openclash.ipk 2>/dev/null | grep -v "depends on:" | sed 's/^[[:space:]]*//' | grep -v "^$")
+# 快速依赖检查（避免 opkg depends 可能的挂起问题）
+echo "[*] 快速检查 OpenClash 文件信息..."
 
-if [ -n "$OPENCLASH_DEPS_CHECK" ]; then
-    echo "[*] OpenClash 依赖的包:"
-    echo "$OPENCLASH_DEPS_CHECK" | while read -r dep; do
-        if [ -n "$dep" ]; then
-            echo "  - $dep"
-        fi
-    done
-else
-    echo "[*] 未检测到特殊依赖，或依赖检查不可用"
+# 检查文件有效性
+if [ ! -f "/tmp/openclash.ipk" ] || [ ! -s "/tmp/openclash.ipk" ]; then
+    echo "[!] IPK 文件无效或不存在"
+    exit 1
 fi
 
-echo "[*] 依赖检查完成，开始安装..."
+# 简单的文件信息检查（替代可能挂起的 opkg depends）
+echo "[*] IPK 文件信息:"
+FILE_SIZE=$(du -h /tmp/openclash.ipk | cut -f1)
+echo "  - 大小: $FILE_SIZE" 
+echo "  - 路径: /tmp/openclash.ipk"
+
+# 检查是否为有效的 IPK 文件
+if file /tmp/openclash.ipk 2>/dev/null | grep -q "gzip\|Debian"; then
+    echo "  - 格式: 有效的 IPK 包"
+else
+    echo "  - 格式: 可能不是标准 IPK 格式，但继续尝试安装"
+fi
+
+echo "[*] 文件检查完成，开始安装..."
 
 # 分级安装策略：从最安全到最少限制
 echo "[*] 使用分级安装策略..."
@@ -309,19 +316,27 @@ echo "[*] 使用分级安装策略..."
 # Level 1: 标准安装（最安全，不覆盖任何文件）
 echo "[*] 尝试标准安装（Level 1）..."
 echo "[*] 命令: opkg install /tmp/openclash.ipk"
-if opkg install /tmp/openclash.ipk 2>/dev/null; then
+echo ""
+echo "=== 开始标准安装 ==="
+if opkg install /tmp/openclash.ipk; then
+    echo ""
     echo "[✓] 标准安装成功 - 系统组件未被修改"
     INSTALL_SUCCESS=true
 else
+    echo ""
     echo "[*] 标准安装失败，尝试下一级别..."
     
     # Level 2: 允许覆盖配置文件，但不覆盖系统包文件
     echo "[*] 尝试配置覆盖安装（Level 2）..."
     echo "[*] 命令: opkg install /tmp/openclash.ipk --force-maintainer"
-    if opkg install /tmp/openclash.ipk --force-maintainer 2>/dev/null; then
+    echo ""
+    echo "=== 开始配置覆盖安装 ==="
+    if opkg install /tmp/openclash.ipk --force-maintainer; then
+        echo ""
         echo "[✓] 配置覆盖安装成功 - 仅覆盖了配置文件"
         INSTALL_SUCCESS=true
     else
+        echo ""
         echo "[*] 配置覆盖安装失败，尝试下一级别..."
         
         # Level 3: 允许覆盖非关键文件（但排除 LuCI 核心）
