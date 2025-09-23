@@ -11,6 +11,7 @@ echo "=================================================="
 echo "源仓库: https://github.com/xiaorouji/openwrt-passwall2"
 echo "目标架构: aarch64_generic"
 echo "下载方式: 直接从 GitHub 下载（无镜像）"
+echo "支持功能: iptables + nftables + haproxy"
 echo "=================================================="
 echo ""
 
@@ -257,7 +258,7 @@ done
 
 # 安装其他依赖
 echo "[*] 安装其他依赖包..."
-DEPS="curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra kmod-tun unzip luci-compat tcping"
+DEPS="curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra kmod-tun unzip luci-compat tcping kmod-nft-socket kmod-nft-tproxy haproxy"
 opkg install $DEPS --force-overwrite --force-maintainer 2>/dev/null || {
     echo "[*] 部分依赖可能已存在，继续..."
 }
@@ -304,7 +305,7 @@ fi
 
 # 安装缺失的依赖包
 echo "[*] 检查并安装缺失的依赖包..."
-MISSING_DEPS="tcping"
+MISSING_DEPS="tcping kmod-nft-socket kmod-nft-tproxy haproxy"
 for dep in $MISSING_DEPS; do
     if ! opkg list-installed | grep -q "^$dep "; then
         echo "[*] 安装缺失依赖: $dep"
