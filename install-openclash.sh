@@ -297,13 +297,18 @@ if [ -n "$OPENCLASH_DEPS_CHECK" ]; then
             echo "  - $dep"
         fi
     done
+else
+    echo "[*] 未检测到特殊依赖，或依赖检查不可用"
 fi
+
+echo "[*] 依赖检查完成，开始安装..."
 
 # 分级安装策略：从最安全到最少限制
 echo "[*] 使用分级安装策略..."
 
 # Level 1: 标准安装（最安全，不覆盖任何文件）
 echo "[*] 尝试标准安装（Level 1）..."
+echo "[*] 命令: opkg install /tmp/openclash.ipk"
 if opkg install /tmp/openclash.ipk 2>/dev/null; then
     echo "[✓] 标准安装成功 - 系统组件未被修改"
     INSTALL_SUCCESS=true
@@ -312,6 +317,7 @@ else
     
     # Level 2: 允许覆盖配置文件，但不覆盖系统包文件
     echo "[*] 尝试配置覆盖安装（Level 2）..."
+    echo "[*] 命令: opkg install /tmp/openclash.ipk --force-maintainer"
     if opkg install /tmp/openclash.ipk --force-maintainer 2>/dev/null; then
         echo "[✓] 配置覆盖安装成功 - 仅覆盖了配置文件"
         INSTALL_SUCCESS=true
