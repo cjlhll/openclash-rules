@@ -15,8 +15,8 @@ echo "支持功能: iptables + nftables + haproxy"
 echo "=================================================="
 echo ""
 
-# 检查必要的命令
-for cmd in curl; do
+# 检查必要的命令（curl 通常已内置，unzip 用于解压）
+for cmd in curl unzip; do
     if ! command -v $cmd >/dev/null 2>&1; then
         echo "[!] 缺少必要命令: $cmd"
         echo "[*] 正在安装 $cmd..."
@@ -145,41 +145,12 @@ done
 
 echo "[5/6] 解压和准备安装文件..."
 
-# 解压 packages zip（使用 tar 或 busybox unzip）
+# 解压 packages zip
 echo "[*] 解压 passwall_packages_ipk_aarch64_generic.zip..."
-if command -v tar >/dev/null 2>&1; then
-    # 尝试使用 tar（某些 OpenWrt 版本支持 zip 格式）
-    tar -xf "passwall_packages_ipk_aarch64_generic.zip" 2>/dev/null || {
-        echo "[!] tar 解压失败，检查是否有 busybox unzip..."
-        # 使用 busybox 内置的 unzip
-        busybox unzip -q "passwall_packages_ipk_aarch64_generic.zip" || {
-            echo "[!] 解压失败，需要安装 unzip 工具"
-            echo "[*] 安装 unzip..."
-            opkg install unzip >/dev/null 2>&1 || {
-                echo "[!] 无法安装 unzip，请手动解压文件"
-                exit 1
-            }
-            unzip -q "passwall_packages_ipk_aarch64_generic.zip" || {
-                echo "[!] 解压失败"
-                exit 1
-            }
-        }
-    }
-else
-    # 使用 busybox 内置的 unzip
-    busybox unzip -q "passwall_packages_ipk_aarch64_generic.zip" || {
-        echo "[!] busybox unzip 失败，需要安装 unzip 工具"
-        echo "[*] 安装 unzip..."
-        opkg install unzip >/dev/null 2>&1 || {
-            echo "[!] 无法安装 unzip，请手动解压文件"
-            exit 1
-        }
-        unzip -q "passwall_packages_ipk_aarch64_generic.zip" || {
-            echo "[!] 解压失败"
-            exit 1
-        }
-    }
-fi
+unzip -q "passwall_packages_ipk_aarch64_generic.zip" || {
+    echo "[!] 解压失败"
+    exit 1
+}
 
 # 移动 luci 文件到解压目录
 echo "[*] 整理安装文件..."
@@ -266,7 +237,7 @@ done
 
 # 安装其他依赖
 echo "[*] 安装其他依赖包..."
-DEPS="curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra kmod-tun luci-compat tcping kmod-nft-socket kmod-nft-tproxy haproxy"
+DEPS="curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra kmod-tun unzip luci-compat tcping kmod-nft-socket kmod-nft-tproxy haproxy"
 opkg install $DEPS --force-overwrite --force-maintainer 2>/dev/null || {
     echo "[*] 部分依赖可能已存在，继续..."
 }
