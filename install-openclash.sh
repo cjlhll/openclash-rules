@@ -35,9 +35,15 @@ echo "[*] 安装 OpenClash 依赖包..."
 DEPS="bash iptables dnsmasq-full curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra ruby ruby-yaml kmod-tun kmod-inet-diag unzip"
 
 # 处理 dnsmasq/dnsmasq-full 冲突
-if opkg list-installed | grep -q "^dnsmasq "; then
-    echo "[*] 替换 dnsmasq 为 dnsmasq-full..."
-    opkg remove dnsmasq
+if opkg list-installed | grep -q "^dnsmasq-full "; then
+    echo "[*] 检测到 dnsmasq-full 已安装，跳过 dnsmasq 处理..."
+else
+    if opkg list-installed | grep -q "^dnsmasq "; then
+        echo "[*] 替换 dnsmasq 为 dnsmasq-full..."
+        opkg remove dnsmasq
+    else
+        echo "[*] 未检测到 dnsmasq，将安装 dnsmasq-full..."
+    fi
 fi
 
 # 安装依赖（不强制覆盖）
