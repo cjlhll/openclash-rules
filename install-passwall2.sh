@@ -209,29 +209,43 @@ echo "$IPK_FILES" | sed 's|^\./||' | sort
 echo "[6/6] 安装依赖和 Passwall2..."
 
 # 安装 dnsmasq-full 并处理冲突
-echo "[*] 安装 dnsmasq-full..."
+echo "[*] 检查 dnsmasq 状态..."
 
-# 如果有 dnsmasq 就卸载
-if opkg list-installed | grep -q "^dnsmasq "; then
-    echo "[*] 检测到 dnsmasq，卸载中..."
-    opkg remove dnsmasq
-fi
-
-# 备份 dhcp 配置以避免警告
-if [ -f "/etc/config/dhcp" ]; then
-    echo "[*] 备份 dhcp 配置..."
-    cp "/etc/config/dhcp" "/tmp/dhcp.backup"
-fi
-
-# 安装 dnsmasq-full
-opkg install dnsmasq-full --force-overwrite --force-maintainer || {
-    echo "[!] dnsmasq-full 安装失败"
-    # 尝试恢复 dhcp 配置
-    if [ -f "/tmp/dhcp.backup" ]; then
-        cp "/tmp/dhcp.backup" "/etc/config/dhcp"
+# 首先检查是否已经安装了 dnsmasq-full
+if opkg list-installed | grep -q "^dnsmasq-full "; then
+    echo "[*] 检测到 dnsmasq-full 已安装，跳过 dnsmasq 处理..."
+else
+    echo "[*] 准备安装 dnsmasq-full..."
+    # 如果有 dnsmasq 就卸载
+    if opkg list-installed | grep -q "^dnsmasq "; then
+        echo "[*] 检测到 dnsmasq，卸载中..."
+        opkg remove dnsmasq
+    else
+        echo "[*] 未检测到 dnsmasq，准备安装 dnsmasq-full..."
     fi
-    exit 1
-}
+fi
+
+# 只有在没有 dnsmasq-full 的情况下才执行安装
+if ! opkg list-installed | grep -q "^dnsmasq-full "; then
+    # 备份 dhcp 配置以避免警告
+    if [ -f "/etc/config/dhcp" ]; then
+        echo "[*] 备份 dhcp 配置..."
+        cp "/etc/config/dhcp" "/tmp/dhcp.backup"
+    fi
+
+    # 安装 dnsmasq-full
+    echo "[*] 安装 dnsmasq-full..."
+    opkg install dnsmasq-full --force-overwrite --force-maintainer || {
+        echo "[!] dnsmasq-full 安装失败"
+        # 尝试恢复 dhcp 配置
+        if [ -f "/tmp/dhcp.backup" ]; then
+            cp "/tmp/dhcp.backup" "/etc/config/dhcp"
+        fi
+        exit 1
+    }
+else
+    echo "[*] dnsmasq-full 已存在，跳过安装步骤..."
+fi
 
 # 恢复 dhcp 配置（如果备份存在且当前配置被覆盖）
 if [ -f "/tmp/dhcp.backup" ] && [ -f "/etc/config/dhcp" ]; then
