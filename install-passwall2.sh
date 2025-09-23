@@ -10,6 +10,7 @@ echo "            Passwall2 一键安装脚本"
 echo "=================================================="
 echo "源仓库: https://github.com/xiaorouji/openwrt-passwall2"
 echo "目标架构: aarch64_generic"
+echo "下载方式: 直接从 GitHub 下载（无镜像）"
 echo "=================================================="
 echo ""
 
@@ -146,23 +147,14 @@ rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 cd "$TMP_DIR"
 
-# 下载函数
+# 下载函数（直接使用原始 GitHub 地址）
 download_file() {
     local url="$1"
     local filename="$2"
-    local use_proxy="$3"
-    
-    if [ "$use_proxy" = "true" ]; then
-        local proxy_url="https://gh-proxy.com/$url"
-        echo "[*] 使用加速镜像下载 $filename..."
-        if curl -L -f -o "$filename" "$proxy_url"; then
-            return 0
-        else
-            echo "[*] 加速镜像失败，尝试原始地址..."
-        fi
-    fi
     
     echo "[*] 下载 $filename..."
+    echo "    URL: $url"
+    
     if curl -L -f -o "$filename" "$url"; then
         return 0
     else
@@ -172,9 +164,9 @@ download_file() {
 }
 
 # 下载所有文件
-download_file "$PACKAGES_URL" "passwall_packages_ipk_aarch64_generic.zip" "true" || exit 1
-download_file "$LUCI_APP_URL" "luci-app-passwall2.ipk" "true" || exit 1
-download_file "$LUCI_I18N_URL" "luci-i18n-passwall2-zh-cn.ipk" "true" || exit 1
+download_file "$PACKAGES_URL" "passwall_packages_ipk_aarch64_generic.zip" || exit 1
+download_file "$LUCI_APP_URL" "luci-app-passwall2.ipk" || exit 1
+download_file "$LUCI_I18N_URL" "luci-i18n-passwall2-zh-cn.ipk" || exit 1
 
 echo "[*] 验证下载的文件..."
 for file in "passwall_packages_ipk_aarch64_generic.zip" "luci-app-passwall2.ipk" "luci-i18n-passwall2-zh-cn.ipk"; do
@@ -431,6 +423,7 @@ echo "            安装完成信息"
 echo "=================================================="
 echo "✓ 源仓库: xiaorouji/openwrt-passwall2"
 echo "✓ 架构: aarch64_generic"
+echo "✓ 下载方式: 直接从 GitHub（无镜像）"
 echo "✓ 访问方式: LuCI 界面 -> 服务 -> PassWall 2"
 echo "✓ 配置文件冲突已自动处理"
 echo "✓ dnsmasq-full 已安装并配置"
