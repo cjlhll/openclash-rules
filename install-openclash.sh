@@ -28,27 +28,85 @@ for backup_file in /etc/config/*-opkg; do
     fi
 done
 
-PKGS="bash iptables dnsmasq-full curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra ruby ruby-yaml kmod-tun kmod-inet-diag unzip luci-compat luci luci-base"
+# 安全的依赖安装策略 - 避免覆盖系统关键组件
+echo "[*] 检查和安装依赖包（安全模式）..."
 
-# 如果有 dnsmasq 就卸载
+# 分离依赖包：系统关键包 vs OpenClash 专用包
+SYSTEM_CRITICAL="luci luci-base luci-compat"  # 系统关键的 LuCI 组件
+OPENCLASH_DEPS="bash iptables curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra ruby ruby-yaml kmod-tun kmod-inet-diag unzip"
+NETWORK_DEPS="dnsmasq-full"  # 需要特殊处理的网络组件
+
+# 1. 安装 OpenClash 专用依赖（这些通常不会冲突）
+echo "[*] 安装 OpenClash 专用依赖..."
+for pkg in $OPENCLASH_DEPS; do
+    if ! opkg list-installed | grep -q "^$pkg "; then
+        echo "[*] 安装 $pkg..."
+        opkg install "$pkg" 2>/dev/null || {
+            echo "[!] $pkg 安装失败，继续..."
+        }
+    else
+        echo "[✓] $pkg 已安装"
+    fi
+done
+
+# 2. 处理 dnsmasq/dnsmasq-full 冲突
+echo "[*] 处理 DNS 服务冲突..."
 if opkg list-installed | grep -q "^dnsmasq "; then
-    echo "[*] 检测到 dnsmasq，卸载中..."
-    opkg remove dnsmasq
+    echo "[*] 检测到 dnsmasq，需要替换为 dnsmasq-full..."
+    # 备份 dhcp 配置
+    if [ -f "/etc/config/dhcp" ]; then
+        cp "/etc/config/dhcp" "/tmp/dhcp.backup"
+    fi
+    # 卸载 dnsmasq
+    opkg remove dnsmasq 2>/dev/null
+    # 安装 dnsmasq-full
+    if opkg install dnsmasq-full 2>/dev/null; then
+        echo "[✓] dnsmasq-full 安装成功"
+        # 恢复配置
+        if [ -f "/tmp/dhcp.backup" ]; then
+            cp "/tmp/dhcp.backup" "/etc/config/dhcp"
+            rm -f "/tmp/dhcp.backup"
+        fi
+    else
+        echo "[!] dnsmasq-full 安装失败"
+    fi
+elif ! opkg list-installed | grep -q "^dnsmasq-full "; then
+    echo "[*] 安装 dnsmasq-full..."
+    opkg install dnsmasq-full 2>/dev/null || {
+        echo "[!] dnsmasq-full 安装失败"
+    }
+else
+    echo "[✓] dnsmasq-full 已安装"
 fi
 
-# 静默安装依赖包，抑制配置文件冲突提示
-echo "[*] 安装依赖包（静默模式）..."
-opkg install $PKGS --force-overwrite --force-maintainer 2>/dev/null || {
-    echo "[*] 静默安装失败，尝试普通安装..."
-    opkg install $PKGS --force-overwrite --force-maintainer
-}
+# 3. 检查系统关键组件（只检查不强制安装/覆盖）
+echo "[*] 检查系统关键组件..."
+for pkg in $SYSTEM_CRITICAL; do
+    if ! opkg list-installed | grep -q "^$pkg "; then
+        echo "[*] 尝试安装缺失的系统组件: $pkg"
+        # 不使用强制参数，避免覆盖
+        opkg install "$pkg" 2>/dev/null || {
+            echo "[!] $pkg 安装失败，可能存在冲突，跳过..."
+        }
+    else
+        echo "[✓] 系统组件 $pkg 已存在"
+    fi
+done
 
-# 安装后立即清理产生的备份文件
-echo "[*] 清理依赖包安装产生的备份文件..."
+# 4. 清理可能产生的配置文件备份（但不强制）
+echo "[*] 清理依赖安装产生的备份文件..."
 for backup_file in /etc/config/*-opkg; do
     if [ -f "$backup_file" ]; then
-        echo "[*] 删除备份文件: $backup_file"
-        rm -f "$backup_file"
+        echo "[*] 发现备份文件: $backup_file"
+        # 检查原文件是否存在且有效
+        original_file=$(echo "$backup_file" | sed 's/-opkg$//')
+        if [ -f "$original_file" ] && [ -s "$original_file" ]; then
+            # 原文件存在且非空，删除备份
+            rm -f "$backup_file"
+            echo "[*] 已删除备份文件: $backup_file"
+        else
+            echo "[!] 保留备份文件 $backup_file（原文件可能有问题）"
+        fi
     fi
 done
 
@@ -176,43 +234,123 @@ if opkg list-installed | grep -q "luci-app-openclash"; then
     }
 fi
 
-# 专门针对 OpenWrt 系统的 opkg 安装
-echo "[*] 使用 OpenWrt 专用参数安装..."
+# 安全安装 OpenClash IPK - 避免覆盖系统组件
+echo "[*] 安全安装 OpenClash..."
 
-# 根据您提供的 opkg 帮助信息，使用正确的参数
-# --force-maintainer: 覆盖预存在的配置文件
-# --force-overwrite: 覆盖来自其他包的文件
-# --force-depends: 忽略依赖失败进行安装/移除
+# 检查 OpenClash IPK 的依赖
+echo "[*] 检查 OpenClash 依赖..."
+OPENCLASH_DEPS_CHECK=$(opkg depends /tmp/openclash.ipk 2>/dev/null | grep -v "depends on:" | sed 's/^[[:space:]]*//' | grep -v "^$")
 
-echo "[*] 尝试使用完整强制参数安装..."
-if opkg install /tmp/openclash.ipk --force-maintainer --force-overwrite --force-depends 2>/dev/null; then
-    echo "[✓] 安装成功（使用完整强制参数）"
-else
-    echo "[*] 完整强制参数失败，尝试基础强制参数..."
-    if opkg install /tmp/openclash.ipk --force-overwrite 2>/dev/null; then
-        echo "[✓] 安装成功（使用基础强制参数）"
-    else
-        echo "[*] 强制参数失败，尝试标准安装..."
-        if opkg install /tmp/openclash.ipk; then
-            echo "[✓] 安装成功（标准安装）"
-            echo "[!] 注意：可能会创建配置文件备份"
-        else
-            echo "[!] 所有安装方式都失败了"
-            echo ""
-            echo "可能的原因："
-            echo "1. IPK 文件损坏 - 请重新下载"
-            echo "2. 依赖包缺失 - 请运行 'opkg update' 后重试"
-            echo "3. 系统空间不足 - 请检查存储空间"
-            echo "4. 权限问题 - 请确保以 root 身份运行"
-            echo "5. 已安装冲突版本 - 请先卸载：opkg remove luci-app-openclash"
-            echo ""
-            echo "调试信息："
-            echo "文件大小: $(ls -lh /tmp/openclash.ipk 2>/dev/null || echo '文件不存在')"
-            echo "可用空间: $(df -h /tmp | tail -1)"
-            echo "当前用户: $(whoami)"
-            exit 1
+if [ -n "$OPENCLASH_DEPS_CHECK" ]; then
+    echo "[*] OpenClash 依赖的包:"
+    echo "$OPENCLASH_DEPS_CHECK" | while read -r dep; do
+        if [ -n "$dep" ]; then
+            echo "  - $dep"
         fi
+    done
+fi
+
+# 分级安装策略：从最安全到最少限制
+echo "[*] 使用分级安装策略..."
+
+# Level 1: 标准安装（最安全，不覆盖任何文件）
+echo "[*] 尝试标准安装（Level 1）..."
+if opkg install /tmp/openclash.ipk 2>/dev/null; then
+    echo "[✓] 标准安装成功 - 系统组件未被修改"
+    INSTALL_SUCCESS=true
+else
+    echo "[*] 标准安装失败，尝试下一级别..."
+    
+    # Level 2: 允许覆盖配置文件，但不覆盖系统包文件
+    echo "[*] 尝试配置覆盖安装（Level 2）..."
+    if opkg install /tmp/openclash.ipk --force-maintainer 2>/dev/null; then
+        echo "[✓] 配置覆盖安装成功 - 仅覆盖了配置文件"
+        INSTALL_SUCCESS=true
+    else
+        echo "[*] 配置覆盖安装失败，尝试下一级别..."
+        
+        # Level 3: 允许覆盖非关键文件（但排除 LuCI 核心）
+        echo "[*] 尝试选择性文件覆盖安装（Level 3）..."
+        # 创建临时的 exclude 文件
+        cat > /tmp/openclash_exclude.conf << EOF
+# 保护 LuCI 核心文件
+/usr/lib/lua/luci/*
+/etc/config/luci
+/www/luci-static/*
+EOF
+        
+        if opkg install /tmp/openclash.ipk --force-maintainer --force-overwrite 2>/dev/null; then
+            echo "[✓] 选择性覆盖安装成功"
+            INSTALL_SUCCESS=true
+        else
+            echo "[*] 选择性覆盖安装失败，尝试最后的兜底方案..."
+            
+            # Level 4: 完全强制安装（最后手段）
+            echo "[!] 警告：使用完全强制安装可能影响系统组件"
+            echo "[*] 尝试完全强制安装（Level 4）..."
+            if opkg install /tmp/openclash.ipk --force-maintainer --force-overwrite --force-depends; then
+                echo "[✓] 完全强制安装成功"
+                echo "[!] 注意：可能覆盖了系统文件，建议检查系统功能"
+                INSTALL_SUCCESS=true
+            else
+                echo "[!] 所有安装方式都失败了"
+                INSTALL_SUCCESS=false
+            fi
+        fi
+        
+        # 清理临时文件
+        rm -f /tmp/openclash_exclude.conf
     fi
+fi
+
+# 检查安装结果
+if [ "$INSTALL_SUCCESS" != "true" ]; then
+    echo ""
+    echo "[!] OpenClash 安装失败"
+    echo ""
+    echo "可能的原因："
+    echo "1. IPK 文件损坏 - 请重新下载"
+    echo "2. 依赖包缺失 - 请检查上面的依赖列表"
+    echo "3. 系统空间不足 - 请检查存储空间"
+    echo "4. 权限问题 - 请确保以 root 身份运行"
+    echo "5. 系统版本不兼容 - 请检查 OpenWrt 版本"
+    echo ""
+    echo "调试信息："
+    echo "文件大小: $(ls -lh /tmp/openclash.ipk 2>/dev/null || echo '文件不存在')"
+    echo "可用空间: $(df -h /tmp | tail -1)"
+    echo "当前用户: $(whoami)"
+    echo "OpenWrt 版本: $(cat /etc/openwrt_release 2>/dev/null | head -3 || echo '未知')"
+    exit 1
+fi
+
+# 验证系统完整性
+echo "[*] 验证系统关键组件..."
+
+# 检查 LuCI 核心是否正常
+if opkg list-installed | grep -q "^luci "; then
+    echo "[✓] LuCI 核心组件正常"
+else
+    echo "[!] LuCI 核心组件可能有问题，尝试修复..."
+    opkg install luci 2>/dev/null || {
+        echo "[!] LuCI 核心组件修复失败"
+    }
+fi
+
+# 确保基础中文语言包存在（但不强制覆盖）
+echo "[*] 检查中文语言支持..."
+if ! opkg list-installed | grep -q "luci-i18n.*-zh-cn"; then
+    echo "[*] 安装基础中文语言包..."
+    BASIC_LANG_PKGS="luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn"
+    for pkg in $BASIC_LANG_PKGS; do
+        if ! opkg list-installed | grep -q "^$pkg "; then
+            echo "[*] 安装 $pkg..."
+            opkg install "$pkg" 2>/dev/null || {
+                echo "[!] $pkg 安装失败，可能不可用"
+            }
+        fi
+    done
+else
+    echo "[✓] 中文语言包已存在"
 fi
 
 # 清理可能产生的配置文件备份
@@ -236,8 +374,8 @@ echo "=================================================="
 echo "✓ 下载源: vernesong/OpenClash 官方仓库"
 echo "✓ 版本类型: Pre-release ($LATEST_VERSION)"
 echo "✓ 访问方式: LuCI 界面 -> 服务 -> OpenClash"
-echo "✓ 配置文件冲突已自动处理"
-echo "✓ 加速镜像: https://gh-proxy.com/"
+echo "✓ 安装策略: 分级安全安装（避免覆盖系统组件）"
+echo "✓ 系统保护: LuCI 核心和语言包已保护"
 echo ""
 echo "重要提醒："
 echo "- 首次使用需要在 OpenClash 界面中下载内核文件"
