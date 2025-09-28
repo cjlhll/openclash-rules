@@ -1,45 +1,101 @@
-name: 同步 OpenWrt-mihomo test
+name: Build OpenList .ipk
 
 on:
-  repository_dispatch:
-    types: [release]
+  push:
+    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      openwrt_ref:
+        description: 'OpenWrt repo ref (branch or tag). Example: openwrt-23.05 or master'
+        default: 'master'
 
 jobs:
-  sync-assets:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GO_VERSION: '1.24.x'   # README 建议 1.24.x
+      OPENWRT_REPO: 'https://github.com/openwrt/openwrt.git'
+      OPENWRT_DIR: './openwrt'
+      PACKAGE_SUBDIR: 'package/openlist'  # 在 openwrt 源码里的目标位置
 
     steps:
-      - name: 检出当前仓库代码
-        uses: actions/checkout@v2
+    - name: Checkout this repo (OpenList-OpenWRT)
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
 
-      - name: 获取目标仓库的最新发布标签
-        id: get_latest_tag
-        run: |
-          release_info=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest)
-          latest_tag=$(echo "$release_info" | jq -r '.tag_name')
-          echo "最新发布标签是：$latest_tag"
-          echo "LATEST_TAG=$latest_tag" >> $GITHUB_ENV
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses5-dev gawk gettext libssl-dev \
+          xsltproc wget unzip python3 python3-distutils subversion libfuse-dev
 
-      - name: 获取最新发布的资产
-        run: |
-          assets=$(curl -s https://api.github.com/repos/morytyann/OpenWrt-mihomo/releases/latest | jq -r '.assets[].browser_download_url')
-          for asset in $assets; do
-            filename=$(basename $asset)
-            curl -s -L $asset -o $filename
-          done
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
 
-      - name: 获取远程分支信息
-        run: git fetch
+    - name: Clone OpenWrt source
+      run: |
+        git clone --depth 1 --branch "${{ github.event.inputs.openwrt_ref || 'master' }}" "${{ env.OPENWRT_REPO }}" "${{ env.OPENWRT_DIR }}"
+      # 如果你想用固定 release（比如 openwrt-23.05），在 workflow_dispatch 输入里改 openwrt_ref
 
-      - name: 切换到 release 分支
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git checkout -f release || git checkout -b release origin/release
+    - name: Prepare OpenWrt build (feeds, etc.)
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        # 替换 golang feed（README 建议这样做以支持 go 1.24）
+        rm -rf feeds/packages/lang/golang || true
+        git clone https://github.com/OpenListTeam/packages_lang_golang -b 24.x feeds/packages/lang/golang || true
 
-      - name: 添加/更新文件并推送
-        run: |
-          git add -A  # 添加/更新所有文件
-          git commit -m "同步 OpenWrt-mihomo 发布版本：${{ env.LATEST_TAG }}" || echo "没有文件变更，跳过提交"
-          git push origin release
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Copy package into OpenWrt tree
+      run: |
+        # 把当前仓库的 package 复制到 openwrt/package/openlist
+        rm -rf "${{ env.OPENWRT_DIR }}/${{ env.PACKAGE_SUBDIR }}"
+        mkdir -p "${{ env.OPENWRT_DIR }}/package"
+        cp -a . "${{ env.OPENWRT_DIR }}/${{ env.PACKAGE_SUBDIR }}-src"
+        # 如果仓库根下已经是 package/openlist 结构，按需调整上面命令
+        # 只移动 luci-app-openlist 文件夹（更稳妥）
+        if [ -d "luci-app-openlist" ]; then
+          rm -rf "${{ env.OPENWRT_DIR }}/${{ env.PACKAGE_SUBDIR }}"
+          mkdir -p "${{ env.OPENWRT_DIR }}/package/openlist"
+          cp -a luci-app-openlist "${{ env.OPENWRT_DIR }}/package/openlist/luci-app-openlist"
+        else
+          # 备用：复制整个 repo 到 package/openlist
+          rm -rf "${{ env.OPENWRT_DIR }}/package/openlist"
+          cp -a . "${{ env.OPENWRT_DIR }}/package/openlist"
+        fi
+
+    - name: (Optional) Customize .config to enable package
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        # 创建最小 .config 以免 make 触发交互：只确保能编译目标包
+        # 你可以把更完整的 .config 提交到仓库以便精确控制 target/arch
+        echo "# Auto-generated minimal config to allow building package" > .config
+        # 允许 building all packages metadata (不必要时可删)
+        make defconfig || true
+
+    - name: Build luci-app-openlist package
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        # 构建单个包以节约时间；并启用并行
+        make package/openlist/luci-app-openlist/compile -j$(nproc) V=s
+
+    - name: Collect .ipk artifacts
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        mkdir -p /tmp/openlist-ipks
+        # 查找生成的 ipk（会根据 target triplet 存在多个目录）
+        find bin -type f -name 'luci-app-openlist*.ipk' -exec cp {} /tmp/openlist-ipks/ \; || true
+        # 有些包也许会在 staging_dir 或 build_dir 中生成二进制；尝试通配
+        find -type f -name 'luci-app-openlist*.ipk' -maxdepth 6 -exec cp {} /tmp/openlist-ipks/ \; || true
+        ls -la /tmp/openlist-ipks || true
+
+    - name: Upload IPK artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: openlist-ipks
+        path: /tmp/openlist-ipks
