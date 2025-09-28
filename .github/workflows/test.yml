@@ -54,21 +54,9 @@ jobs:
 
     - name: Copy package into OpenWrt tree
       run: |
-        # 把当前仓库的 package 复制到 openwrt/package/openlist
-        rm -rf "${{ env.OPENWRT_DIR }}/${{ env.PACKAGE_SUBDIR }}"
-        mkdir -p "${{ env.OPENWRT_DIR }}/package"
-        cp -a . "${{ env.OPENWRT_DIR }}/${{ env.PACKAGE_SUBDIR }}-src"
-        # 如果仓库根下已经是 package/openlist 结构，按需调整上面命令
-        # 只移动 luci-app-openlist 文件夹（更稳妥）
-        if [ -d "luci-app-openlist" ]; then
-          rm -rf "${{ env.OPENWRT_DIR }}/${{ env.PACKAGE_SUBDIR }}"
-          mkdir -p "${{ env.OPENWRT_DIR }}/package/openlist"
-          cp -a luci-app-openlist "${{ env.OPENWRT_DIR }}/package/openlist/luci-app-openlist"
-        else
-          # 备用：复制整个 repo 到 package/openlist
-          rm -rf "${{ env.OPENWRT_DIR }}/package/openlist"
-          cp -a . "${{ env.OPENWRT_DIR }}/package/openlist"
-        fi
+        rm -rf "${{ env.OPENWRT_DIR }}/package/openlist"
+        mkdir -p "${{ env.OPENWRT_DIR }}/package/openlist"
+        cp -a luci-app-openlist "${{ env.OPENWRT_DIR }}/package/openlist/"
 
     - name: (Optional) Customize .config to enable package
       working-directory: ${{ env.OPENWRT_DIR }}
