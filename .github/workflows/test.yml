@@ -1,88 +1,132 @@
-name: Build OpenList .ipk
+name: Build OpenList .ipk (OpenWrt)
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       openwrt_ref:
-        description: 'OpenWrt repo ref (branch or tag). Example: openwrt-23.05 or master'
-        default: 'master'
+        description: 'OpenWrt branch or tag to use (e.g. openwrt-23.05). If empty, will try openwrt-23.05 then fallback to master.'
+        required: false
+        default: 'openwrt-23.05'
+      go_version:
+        description: 'Go version to install (e.g. 1.24 or 1.24.x)'
+        required: false
+        default: '1.24'
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        default: '240'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: ${{ github.event.inputs.timeout_minutes }}
     env:
-      GO_VERSION: '1.24.x'   # README 建议 1.24.x
       OPENWRT_REPO: 'https://github.com/openwrt/openwrt.git'
       OPENWRT_DIR: './openwrt'
-      PACKAGE_SUBDIR: 'package/openlist'  # 在 openwrt 源码里的目标位置
-
+      PACKAGE_SRC_DIR: './openlist-src'
+      GO_FALLBACK_REPO: 'https://github.com/sbwml/packages_lang_golang'
     steps:
-    - name: Checkout this repo (OpenList-OpenWRT)
+
+    - name: Checkout OpenList (this repo) into separated folder
       uses: actions/checkout@v4
       with:
+        path: openlist-src
         fetch-depth: 1
 
-    - name: Install system dependencies
+    - name: Install system packages (no python3-distutils)
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential libncurses5-dev gawk gettext libssl-dev \
-          xsltproc wget unzip python3 python3-setuptools subversion libfuse-dev
+        sudo apt-get update -y
+        sudo apt-get install -y --no-install-recommends \
+          build-essential libncurses5-dev gawk gettext libssl-dev xsltproc \
+          wget unzip python3 python3-setuptools python3-dev subversion \
+          libfuse-dev swig rsync bc file flex bison ca-certificates git
 
-
-    - name: Setup Go
+    - name: Setup Go (required by some packages; default 1.24)
       uses: actions/setup-go@v4
       with:
-        go-version: ${{ env.GO_VERSION }}
+        go-version: ${{ github.event.inputs.go_version }}
 
-    - name: Clone OpenWrt source
+    - name: Clone OpenWrt (try user ref, fallback to default)
       run: |
-        git clone --depth 1 --branch "${{ github.event.inputs.openwrt_ref || 'master' }}" "${{ env.OPENWRT_REPO }}" "${{ env.OPENWRT_DIR }}"
-      # 如果你想用固定 release（比如 openwrt-23.05），在 workflow_dispatch 输入里改 openwrt_ref
+        set -euo pipefail
+        REF="${{ github.event.inputs.openwrt_ref }}"
+        if [ -z "$REF" ] || [ "$REF" = "null" ]; then
+          REF="openwrt-23.05"
+        fi
+        echo "Cloning OpenWrt ref: $REF"
+        # try clone with requested ref, fallback to master if branch/tag not found
+        if ! git clone --depth 1 --branch "$REF" "${{ env.OPENWRT_REPO }}" "${{ env.OPENWRT_DIR }}"; then
+          echo "Requested ref '$REF' failed — falling back to shallow master clone"
+          rm -rf "${{ env.OPENWRT_DIR }}" || true
+          git clone --depth 1 "${{ env.OPENWRT_REPO }}" "${{ env.OPENWRT_DIR }}"
+        fi
+        ls -la "${{ env.OPENWRT_DIR }}" || true
 
-    - name: Prepare OpenWrt build (feeds, etc.)
+    - name: Prepare feeds & (try) replace golang feed for Go >=1.24
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
-        # 替换 golang feed（README 建议这样做以支持 go 1.24）
+        set -euo pipefail
+        # ensure clean state
         rm -rf feeds/packages/lang/golang || true
-        git clone https://github.com/OpenListTeam/packages_lang_golang -b 24.x feeds/packages/lang/golang || true
+
+        # try to clone sbwml/packages_lang_golang 24.x first, if that fails try 25.x
+        if git clone --depth 1 "${{ env.GO_FALLBACK_REPO }}" -b 24.x feeds/packages/lang/golang 2>/dev/null; then
+          echo "Cloned packages_lang_golang (24.x)"
+        elif git clone --depth 1 "${{ env.GO_FALLBACK_REPO }}" -b 25.x feeds/packages/lang/golang 2>/dev/null; then
+          echo "Cloned packages_lang_golang (25.x)"
+        else
+          echo "Warning: could not clone packages_lang_golang 24.x/25.x — continuing without replacing golang feed"
+        fi
 
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Copy package into OpenWrt tree
-      run: |
-        rm -rf "${{ env.OPENWRT_DIR }}/package/openlist"
-        mkdir -p "${{ env.OPENWRT_DIR }}/package/openlist/luci-app-openlist"
-        cp -a openlist-src/* "${{ env.OPENWRT_DIR }}/package/openlist/luci-app-openlist/"
-
-
-    - name: (Optional) Customize .config to enable package
+    - name: Copy OpenList package into OpenWrt tree
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
-        # 创建最小 .config 以免 make 触发交互：只确保能编译目标包
-        # 你可以把更完整的 .config 提交到仓库以便精确控制 target/arch
-        echo "# Auto-generated minimal config to allow building package" > .config
-        # 允许 building all packages metadata (不必要时可删)
-        make defconfig || true
+        set -euo pipefail
+        # ensure target package dir
+        rm -rf package/openlist || true
+        mkdir -p package/openlist
+        # copy everything from checked-out repo (openlist-src) into package/openlist
+        cp -a ../openlist-src/* package/openlist/
+        echo "Contents of package/openlist:"
+        ls -la package/openlist || true
+
+    - name: (Optional) show package Makefile location for debug
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "Listing potential package dirs (package/openlist/*):"
+        ls -la package/openlist || true
+        echo "Check for luci-app-openlist Makefile(s):"
+        find package/openlist -maxdepth 3 -type f -name 'Makefile' -print || true
 
     - name: Build luci-app-openlist package
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
-        # 构建单个包以节约时间；并启用并行
-        make package/openlist/luci-app-openlist/compile -j$(nproc) V=s
+        set -euo pipefail
+        # Use the package path that README expects: package/openlist/luci-app-openlist
+        # If the repo layout is different, try the generic package/openlist/ compile target.
+        JOBS=$(nproc || true)
+        if make package/openlist/luci-app-openlist/compile -j${JOBS} V=s; then
+          echo "Built package/openlist/luci-app-openlist"
+        else
+          echo "Try fallback: package/openlist/compile"
+          make package/openlist/compile -j${JOBS} V=s
+        fi
 
-    - name: Collect .ipk artifacts
+    - name: Collect generated .ipk artifacts
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
-        mkdir -p /tmp/openlist-ipks
-        # 查找生成的 ipk（会根据 target triplet 存在多个目录）
-        find bin -type f -name 'luci-app-openlist*.ipk' -exec cp {} /tmp/openlist-ipks/ \; || true
-        # 有些包也许会在 staging_dir 或 build_dir 中生成二进制；尝试通配
-        find -type f -name 'luci-app-openlist*.ipk' -maxdepth 6 -exec cp {} /tmp/openlist-ipks/ \; || true
-        ls -la /tmp/openlist-ipks || true
+        set -euo pipefail
+        OUTDIR="/tmp/openlist-ipks"
+        mkdir -p "${OUTDIR}"
+        # common bin locations
+        find ./bin -type f -name 'luci-app-openlist*.ipk' -exec cp {} "${OUTDIR}/" \; || true
+        # general search
+        find . -type f -name 'luci-app-openlist*.ipk' -maxdepth 8 -exec cp {} "${OUTDIR}/" \; || true
+        echo "Collected files:"
+        ls -la "${OUTDIR}" || true
 
     - name: Upload IPK artifacts
       uses: actions/upload-artifact@v4
