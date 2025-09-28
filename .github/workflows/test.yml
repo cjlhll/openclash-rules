@@ -55,8 +55,9 @@ jobs:
     - name: Copy package into OpenWrt tree
       run: |
         rm -rf "${{ env.OPENWRT_DIR }}/package/openlist"
-        mkdir -p "${{ env.OPENWRT_DIR }}/package/openlist"
-        rsync -av --exclude 'openwrt' ./ "${{ env.OPENWRT_DIR }}/package/openlist/"
+        mkdir -p "${{ env.OPENWRT_DIR }}/package/openlist/luci-app-openlist"
+        cp -a openlist-src/* "${{ env.OPENWRT_DIR }}/package/openlist/luci-app-openlist/"
+
 
 
 
