@@ -56,7 +56,8 @@ jobs:
       run: |
         rm -rf "${{ env.OPENWRT_DIR }}/package/openlist"
         mkdir -p "${{ env.OPENWRT_DIR }}/package/openlist"
-        cp -a ./* "${{ env.OPENWRT_DIR }}/package/openlist/"
+        rsync -av --exclude 'openwrt' ./ "${{ env.OPENWRT_DIR }}/package/openlist/"
+
 
 
     - name: (Optional) Customize .config to enable package
