@@ -32,7 +32,7 @@ done
 echo "[*] 安装 OpenClash 依赖包..."
 
 # OpenClash 必需依赖
-DEPS="bash iptables dnsmasq-full curl ca-bundle ipset ip-full iptables-mod-tproxy iptables-mod-extra ruby ruby-yaml kmod-tun kmod-inet-diag unzip"
+DEPS="bash dnsmasq-full curl ca-bundle ip-full ruby ruby-yaml kmod-tun kmod-inet-diag unzip kmod-nft-tproxy luci-compat luci luci-base"
 
 # 处理 dnsmasq/dnsmasq-full 冲突
 if opkg list-installed | grep -q "^dnsmasq-full "; then
