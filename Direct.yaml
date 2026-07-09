@@ -24,6 +24,7 @@ payload:
   - DOMAIN-SUFFIX,danmu.loo.lol
   - DOMAIN-SUFFIX,dmku.hls.one
   - DOMAIN-SUFFIX,azure.leuse.top
+  - DOMAIN-SUFFIX,api.github.com
   
   - DOMAIN-SUFFIX,dns.jd.com
   - DOMAIN-SUFFIX,dns.weibo.cn
