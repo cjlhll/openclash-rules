@@ -7,4 +7,5 @@ payload:
   - DOMAIN,oapi.dingtalk.com
   - DOMAIN,wss-open-connection.dingtalk.com
   - DOMAIN-SUFFIX,dingtalk.com
+  - DOMAIN-SUFFIX,baidu.com
 
