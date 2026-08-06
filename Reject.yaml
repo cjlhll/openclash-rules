@@ -3,9 +3,8 @@ payload:
   - DOMAIN-SUFFIX,pagead2.googlesyndication.com
   - DOMAIN-SUFFIX,pagead2.googleadservices-cn.com
   
-  - DOMAIN,api.dingtalk.com,REJECT
-  - DOMAIN,oapi.dingtalk.com,REJECT
-  - DOMAIN,wss-open-connection.dingtalk.com,REJECT
-  # 兜底（钉钉相关子域一并拦，面更宽）
-  - DOMAIN-SUFFIX,dingtalk.com,REJECT
+  - DOMAIN,api.dingtalk.com
+  - DOMAIN,oapi.dingtalk.com
+  - DOMAIN,wss-open-connection.dingtalk.com
+  - DOMAIN-SUFFIX,dingtalk.com
 
